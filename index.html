@@ -83,6 +83,9 @@ button {
 <div class="content" id="content"></div>
 
 <script>
+// ==== VARIABLES GLOBALES ====
+let currentPage = "dashboard"; // dashboard / invest / action_x / help
+
 let argent = localStorage.getItem("argent")
     ? parseFloat(localStorage.getItem("argent"))
     : 10000;
@@ -122,8 +125,9 @@ function getRank() {
     else return "Expert";
 }
 
-/* DASHBOARD AMÉLIORÉ */
+// ==== DASHBOARD AMÉLIORÉ ====
 function dashboard() {
+    currentPage = "dashboard";
     let value = 0;
     actions.forEach(a => value += portfolio[a.id]*a.prix);
 
@@ -140,8 +144,9 @@ function dashboard() {
     document.getElementById("content").innerHTML = html;
 }
 
-/* INVEST PAGE */
+// ==== INVEST PAGE ====
 function investPage() {
+    currentPage = "invest";
     let html = `<h1>Investir</h1>`;
     actions.forEach(a=>{
         let diff = (((a.prix-a.prev)/a.prev)*100).toFixed(2);
@@ -156,8 +161,9 @@ function investPage() {
     document.getElementById("content").innerHTML = html;
 }
 
-/* ACTION DETAIL */
+// ==== ACTION DETAIL ====
 function openAction(id) {
+    currentPage = "action_"+id;
     let a = actions[id];
     document.getElementById("content").innerHTML = `
         <h1>${a.nom}</h1>
@@ -188,7 +194,7 @@ function openAction(id) {
     drawChart(id,60);
 }
 
-/* COURBE */
+// ==== COURBE ====
 function drawChart(id, points) {
     let a = actions[id];
     let data = a.history.slice(-points);
@@ -211,7 +217,7 @@ function drawChart(id, points) {
     ctx.stroke();
 }
 
-/* BUY / SELL */
+// ==== BUY / SELL ====
 function buy(id) {
     let amount = parseFloat(document.getElementById("amount").value);
     let a = actions[id];
@@ -233,8 +239,9 @@ function sell(id) {
     openAction(id);
 }
 
-/* HELP PAGE */
+// ==== HELP PAGE ====
 function helpPage() {
+    currentPage = "help";
     document.getElementById("content").innerHTML = `
         <h1>📘 Aide / Instructions</h1>
         <div class="card">
@@ -283,7 +290,7 @@ function helpPage() {
     `;
 }
 
-/* MARKET LOOP */
+// ==== MARKET LOOP ====
 setInterval(()=>{
     actions.forEach(a=>{
         a.timer--;
@@ -297,14 +304,13 @@ setInterval(()=>{
         }
     });
 
-    // Ne recharge la page que si on est sur la liste des investissements, pas sur action ouverte
-    if(document.getElementById("content").innerHTML.includes("Investir") &&
-       !document.getElementById("content").innerHTML.includes("canvas")) {
+    // Ne recharger que si on est sur la page liste des investissements
+    if(currentPage === "invest") {
         investPage();
     }
 },1000);
 
-/* START */
+// ==== START ====
 dashboard();
 </script>
 

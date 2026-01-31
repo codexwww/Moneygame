@@ -3,7 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <title>Money Game</title>
-
 <style>
 body {
     margin: 0;
@@ -24,6 +23,7 @@ body {
     margin: 15px 0;
     cursor: pointer;
     color: #cbd5f5;
+    font-weight: bold;
 }
 .menu-item:hover { color: #22c55e; }
 
@@ -37,12 +37,18 @@ body {
     padding: 20px;
     border-radius: 10px;
     margin-bottom: 15px;
+    box-shadow: 0 0 10px rgba(0,255,0,0.2);
+    transition: all 0.3s ease;
 }
+
+.card.up { box-shadow: 0 0 10px rgba(34,197,94,0.5); }
+.card.down { box-shadow: 0 0 10px rgba(239,68,68,0.5); }
 
 .action {
     display: flex;
     justify-content: space-between;
     cursor: pointer;
+    padding: 10px;
 }
 
 .up { color: #22c55e; }
@@ -51,6 +57,7 @@ body {
 canvas {
     background: #020617;
     border-radius: 10px;
+    margin-top: 15px;
 }
 
 input {
@@ -67,10 +74,13 @@ button {
     background: #22c55e;
     color: black;
     margin-right: 5px;
+    transition: all 0.2s ease;
 }
+button:hover { background: #16a34a; }
+
+h1 { margin-top: 0; }
 </style>
 </head>
-
 <body>
 
 <div class="sidebar">
@@ -83,8 +93,9 @@ button {
 <div class="content" id="content"></div>
 
 <script>
-// ==== VARIABLES GLOBALES ====
+// ===== VARIABLES GLOBALES =====
 let currentPage = "dashboard"; // dashboard / invest / action_x / help
+let currentActionId = null;
 
 let argent = localStorage.getItem("argent")
     ? parseFloat(localStorage.getItem("argent"))
@@ -114,7 +125,7 @@ function save() {
     actions.forEach(a=>localStorage.setItem("action_"+a.id, JSON.stringify(a)));
 }
 
-/* CALCUL DU RANG */
+// ==== CALCUL DU RANG ====
 function getRank() {
     let total = argent;
     actions.forEach(a=>total += portfolio[a.id]*a.prix);
@@ -150,7 +161,7 @@ function investPage() {
     let html = `<h1>Investir</h1>`;
     actions.forEach(a=>{
         let diff = (((a.prix-a.prev)/a.prev)*100).toFixed(2);
-        html += `<div class="card action" onclick="openAction(${a.id})">
+        html += `<div class="card ${diff>=0?'up':'down'} action" onclick="openAction(${a.id})">
             <div>
                 <strong>${a.nom}</strong><br>
                 <span class="${diff>=0?'up':'down'}">${diff>=0?'▲':'▼'} ${diff} %</span>
@@ -164,6 +175,7 @@ function investPage() {
 // ==== ACTION DETAIL ====
 function openAction(id) {
     currentPage = "action_"+id;
+    currentActionId = id;
     let a = actions[id];
     document.getElementById("content").innerHTML = `
         <h1>${a.nom}</h1>
@@ -242,6 +254,7 @@ function sell(id) {
 // ==== HELP PAGE ====
 function helpPage() {
     currentPage = "help";
+    currentActionId = null;
     document.getElementById("content").innerHTML = `
         <h1>📘 Aide / Instructions</h1>
         <div class="card">
@@ -290,7 +303,7 @@ function helpPage() {
     `;
 }
 
-// ==== MARKET LOOP ====
+// ==== MARKET LOOP =====
 setInterval(()=>{
     actions.forEach(a=>{
         a.timer--;
@@ -304,15 +317,14 @@ setInterval(()=>{
         }
     });
 
-    // Ne recharger que si on est sur la page liste des investissements
-    if(currentPage === "invest") {
-        investPage();
-    }
+    // Seule la page action ouverte ou invest page est mise à jour
+    if(currentPage === "invest") investPage();
+    if(currentPage && currentPage.startsWith("action_")) openAction(currentActionId);
+
 },1000);
 
 // ==== START ====
 dashboard();
 </script>
-
 </body>
 </html>

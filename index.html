@@ -26,6 +26,7 @@
             cursor: pointer;
             background: #22c55e;
             color: black;
+            margin-top: 10px;
         }
         button:hover {
             background: #16a34a;
@@ -38,23 +39,45 @@
 
     <div class="card">
         <h2>Solde</h2>
-        <p id="money">10 000 €</p>
+        <p id="money">0 €</p>
 
         <button onclick="investir()">Investir 1 000 €</button>
+        <button onclick="reset()">Réinitialiser</button>
     </div>
 
     <script>
-        let argent = 10000;
+        let argent = localStorage.getItem("argent")
+            ? parseInt(localStorage.getItem("argent"))
+            : 10000;
+
+        function afficherArgent() {
+            document.getElementById("money").innerText = argent + " €";
+            localStorage.setItem("argent", argent);
+        }
 
         function investir() {
             if (argent >= 1000) {
                 argent -= 1000;
-                alert("Investissement effectué !");
-                document.getElementById("money").innerText = argent + " €";
+
+                // gain de 10%
+                let gain = Math.floor(1000 * 0.10);
+                argent += 1000 + gain;
+
+                alert("Investissement réussi ! Gain : +" + gain + " €");
+                afficherArgent();
             } else {
                 alert("Pas assez d'argent !");
             }
         }
+
+        function reset() {
+            if (confirm("Recommencer le jeu ?")) {
+                argent = 10000;
+                afficherArgent();
+            }
+        }
+
+        afficherArgent();
     </script>
 
 </body>

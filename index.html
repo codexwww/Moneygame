@@ -121,17 +121,22 @@ function getRank() {
     else return "Expert";
 }
 
-/* DASHBOARD */
+/* DASHBOARD AMÉLIORÉ */
 function dashboard() {
     let value = 0;
-    actions.forEach(a=>value += portfolio[a.id]*a.prix);
+    actions.forEach(a => value += portfolio[a.id]*a.prix);
 
-    document.getElementById("content").innerHTML = `
-        <h1>Tableau de bord</h1>
-        <div class="card">💰 Argent : ${argent.toFixed(2)} €</div>
-        <div class="card">💼 Portefeuille : ${value.toFixed(2)} €</div>
+    let html = `<h1>Tableau de bord</h1>
+        <div class="card">💰 Argent disponible : ${argent.toFixed(2)} €</div>
+        <div class="card">💼 Valeur du portefeuille : ${value.toFixed(2)} €</div>
         <div class="card">🏅 Rang : ${getRank()}</div>
-    `;
+        <div class="card">
+            <strong>Détails du portefeuille :</strong><br>`;
+    actions.forEach(a=>{
+        html+=`${a.nom} : ${portfolio[a.id].toFixed(4)} parts (valeur : ${(portfolio[a.id]*a.prix).toFixed(2)} €)<br>`;
+    });
+    html+=`</div>`;
+    document.getElementById("content").innerHTML = html;
 }
 
 /* INVEST PAGE */
@@ -227,7 +232,7 @@ function sell(id) {
     openAction(id);
 }
 
-/* MARKET LOOP */
+/* MARKET LOOP FIX (ne recharge plus investPage si on est sur action ouverte) */
 setInterval(()=>{
     actions.forEach(a=>{
         a.timer--;
@@ -240,7 +245,12 @@ setInterval(()=>{
             save();
         }
     });
-    if(document.getElementById("content").innerHTML.includes("Investir")) investPage();
+
+    // Ne recharger que si on est sur la page liste des investissements
+    if(document.getElementById("content").innerHTML.includes("Investir") &&
+       !document.getElementById("content").innerHTML.includes("canvas")) {
+        investPage();
+    }
 },1000);
 
 /* START */

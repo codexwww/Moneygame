@@ -912,8 +912,10 @@ function playRoulette(mode){
         resultText += `Vous perdez ${bet.toFixed(2)} €.`;
     }
     save();
-    document.getElementById("rouletteResult").innerText = resultText;
-    dashboard();
+    // afficher le résultat sur la page Casino sans rediriger
+    const el = document.getElementById("rouletteResult");
+    if(el) el.innerText = resultText;
+    // rester sur la page casino; timers/UI seront rafraîchis par la boucle principale
 }
 
 // Simple Blackjack implementation
@@ -1019,9 +1021,10 @@ function finishBlackjack(){
         argent -= bjGame.bet;
     }
     save();
-    document.getElementById("bjState").innerHTML += `<br><strong>${result}</strong>`;
+    const state = document.getElementById("bjState");
+    if(state) state.innerHTML += `<br><strong>${result}</strong>`;
     bjGame = null;
-    dashboard();
+    // ne pas rediriger : rester sur la page casino pour afficher le résultat
 }
 
 // ==== END CASINO ====

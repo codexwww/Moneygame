@@ -5,79 +5,154 @@
     <title>Money Game</title>
     <style>
         body {
+            margin: 0;
             font-family: Arial, sans-serif;
             background: #0f172a;
             color: white;
-            text-align: center;
-            padding: 40px;
+            display: flex;
         }
+
+        /* MENU GAUCHE */
+        .sidebar {
+            width: 220px;
+            background: #020617;
+            height: 100vh;
+            padding: 20px;
+        }
+
+        .sidebar h2 {
+            margin-bottom: 30px;
+        }
+
+        .menu-item {
+            margin: 15px 0;
+            cursor: pointer;
+            color: #cbd5f5;
+        }
+
+        .menu-item:hover {
+            color: #22c55e;
+        }
+
+        /* CONTENU */
+        .content {
+            flex: 1;
+            padding: 30px;
+        }
+
         .card {
             background: #1e293b;
             padding: 20px;
             border-radius: 10px;
-            max-width: 400px;
-            margin: auto;
+            margin-bottom: 20px;
         }
+
+        .stats {
+            display: flex;
+            gap: 20px;
+        }
+
         button {
-            padding: 10px 20px;
-            font-size: 16px;
+            padding: 10px 15px;
             border: none;
             border-radius: 6px;
             cursor: pointer;
             background: #22c55e;
             color: black;
-            margin-top: 10px;
-        }
-        button:hover {
-            background: #16a34a;
         }
     </style>
 </head>
 <body>
 
-    <h1>💰 Money Game</h1>
-
-    <div class="card">
-        <h2>Solde</h2>
-        <p id="money">0 €</p>
-
-        <button onclick="investir()">Investir 1 000 €</button>
-        <button onclick="reset()">Réinitialiser</button>
+    <!-- MENU -->
+    <div class="sidebar">
+        <h2>💰 Money Game</h2>
+        <div class="menu-item" onclick="showDashboard()">🏠 Accueil</div>
+        <div class="menu-item" onclick="showInvest()">📈 Investir</div>
     </div>
 
+    <!-- CONTENU -->
+    <div class="content" id="content"></div>
+
     <script>
+        // DONNÉES JOUEUR
         let argent = localStorage.getItem("argent")
             ? parseInt(localStorage.getItem("argent"))
             : 10000;
 
-        function afficherArgent() {
-            document.getElementById("money").innerText = argent + " €";
+        let totalGagne = localStorage.getItem("totalGagne")
+            ? parseInt(localStorage.getItem("totalGagne"))
+            : 0;
+
+        function save() {
             localStorage.setItem("argent", argent);
+            localStorage.setItem("totalGagne", totalGagne);
         }
 
-        function investir() {
-            if (argent >= 1000) {
-                argent -= 1000;
+        // DASHBOARD
+        function showDashboard() {
+            document.getElementById("content").innerHTML = `
+                <h1>Tableau de bord</h1>
 
-                // gain de 10%
-                let gain = Math.floor(1000 * 0.10);
-                argent += 1000 + gain;
+                <div class="stats">
+                    <div class="card">
+                        <h3>💰 Argent</h3>
+                        <p>${argent} €</p>
+                    </div>
 
+                    <div class="card">
+                        <h3>🏆 Rang</h3>
+                        <p>Débutant</p>
+                    </div>
+
+                    <div class="card">
+                        <h3>📊 Total gagné</h3>
+                        <p>${totalGagne} €</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>👤 Compte</h3>
+                    <p>Type : Joueur solo</p>
+                    <p>Argent fictif</p>
+                </div>
+            `;
+        }
+
+        // PAGE INVESTIR (simple pour l’instant)
+        function showInvest() {
+            document.getElementById("content").innerHTML = `
+                <h1>Investir</h1>
+
+                <div class="card">
+                    <h3>Action Alpha</h3>
+                    <p>Prix : 100 €</p>
+                    <button onclick="investir(100)">Investir</button>
+                </div>
+
+                <div class="card">
+                    <h3>Action Beta</h3>
+                    <p>Prix : 250 €</p>
+                    <button onclick="investir(250)">Investir</button>
+                </div>
+            `;
+        }
+
+        function investir(prix) {
+            if (argent >= prix) {
+                let gain = Math.floor(prix * (Math.random() * 0.2));
+                argent += gain;
+                totalGagne += gain;
+                save();
                 alert("Investissement réussi ! Gain : +" + gain + " €");
-                afficherArgent();
+                showInvest();
             } else {
                 alert("Pas assez d'argent !");
             }
         }
 
-        function reset() {
-            if (confirm("Recommencer le jeu ?")) {
-                argent = 10000;
-                afficherArgent();
-            }
-        }
-
-        afficherArgent();
+        // DÉMARRAGE
+        showDashboard();
     </script>
 
 </body>

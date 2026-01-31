@@ -555,151 +555,219 @@ function sellAll(id) {
     openAction(id);
 }
 
-// ==== HELP PAGE ====
+// ==== HELP PAGE (COMPLÈTE) ====
 function helpPage() {
     currentPage = "help";
     currentActionId = null;
     document.getElementById("content").innerHTML = `
-        <h1>📘 Aide / Instructions</h1>
+        <h1>📘 Aide complète / Manuel utilisateur</h1>
+
         <div class="card">
-            <h3>Argent vs Portefeuille</h3>
+            <h3>Présentation</h3>
             <p>
-                💰 Argent : votre cash disponible pour investir.<br>
-                💼 Portefeuille : parts d'actions possédées. Valeur = parts × prix actuel.<br>
-                Total compte = Argent + Portefeuille
+                Money Game est une simulation d'investissement et de gestion d'un portefeuille avec :
+                - 3 instruments d'investissement (actions) ayant des comportements différents,
+                - un tableau de bord avec historique et graphiques,
+                - des bots joueurs simulés pour compléter le classement,
+                - un fil de news qui peut influencer les actions,
+                - un mini-casino (roulette et blackjack).
             </p>
         </div>
 
         <div class="card">
-            <h3>Investir / Vendre</h3>
-            <p>
-                1️⃣ Cliquez sur "Investir" pour voir les actions.<br>
-                2️⃣ Cliquez sur une action pour voir sa courbe.<br>
-                3️⃣ Entrez le montant à investir ou récupérer, puis cliquez sur le bouton.<br>
-                ⚠️ Vous ne pouvez pas investir plus que votre argent disponible, ni récupérer plus que vos parts.
-            </p>
-        </div>
-
-        <div class="card">
-            <h3>Courbes</h3>
-            <p>
-                📈 Les courbes montrent l'évolution du prix. Utilisez les boutons pour changer la fenêtre d'affichage.
-            </p>
-        </div>
-
-        <div class="card">
-            <h3>Rang</h3>
-            <p>
-                🏅 Votre rang dépend de Argent + Portefeuille.<br>
-                - Débutant : < 10 000 €<br>
-                - Amateur : 10 000 – 20 000 €<br>
-                - Pro : 20 000 – 50 000 €<br>
-                - Expert : > 50 000 €
-            </p>
-        </div>
-
-        <div class="card">
-            <h3>Astuce</h3>
-            <p>
-                Commencez petit, suivez les courbes, et n’investissez pas tout d’un coup !
-            </p>
-        </div>
-    `;
-}
-
-// ==== DETAILED VIEWS FOR CARDS ====
-// openMoney: affiche l'historique détaillé de l'argent (fenêtre large)
-function openMoney() {
-    currentPage = "money";
-    document.getElementById("content").innerHTML = `
-        <h1>Historique de l'argent</h1>
-        <div class="card">
-            <strong>Argent disponible : ${argent.toFixed(2)} €</strong>
-            <canvas id="moneyChart" width="1000" height="300"></canvas>
-            <div class="helper">Historique enregistré (dernier ${argentHistory.length} snapshots).</div>
-        </div>
-        <button onclick="dashboard()">⬅ Retour</button>
-    `;
-    setTimeout(()=> {
-        let c = document.getElementById("moneyChart");
-        if(!c) return;
-        let ctx = c.getContext("2d");
-        // use up to 5000 points to draw long timeline
-        let data = argentHistory.slice(-5000);
-        if(data.length<2) data = argentHistory;
-        ctx.clearRect(0,0,c.width,c.height);
-        let max = Math.max(...data);
-        let min = Math.min(...data);
-        ctx.beginPath();
-        ctx.strokeStyle = "#60a5fa";
-        ctx.lineWidth = 2;
-        data.forEach((v,i)=>{
-            let x = i*(c.width/data.length);
-            let y = c.height - ((v-min)/(max-min||1))* (c.height-10) - 5;
-            if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-        });
-        ctx.stroke();
-    },50);
-}
-
-// openRank: affiche classement des joueurs et evolution du rang
-function openRank() {
-    currentPage = "rank";
-    let players = updatePlayersList().slice().sort((a,b)=>b.total - a.total);
-    let html = `<h1>Classement des joueurs</h1>
-        <div class="card">
-            <strong>Classement</strong><br><ol>`;
-    players.forEach(p=>{
-        html+=`<li>${p.name} — ${p.total.toFixed(2)} €</li>`;
-    });
-    html+=`</ol>
-            <canvas id="rankChart" width="900" height="200"></canvas>
-            <div class="helper">Graphique d'évolution du rang (échelle interne). Les bots sont simulés.</div>
-        </div>
-        <button onclick="dashboard()">⬅ Retour</button>`;
-    document.getElementById("content").innerHTML = html;
-
-    setTimeout(()=> {
-        let c = document.getElementById("rankChart");
-        if(!c) return;
-        let ctx = c.getContext("2d");
-        let data = rankHistory.slice(-1000);
-        if(data.length<2) data = rankHistory;
-        ctx.clearRect(0,0,c.width,c.height);
-        let max = Math.max(...data);
-        let min = Math.min(...data);
-        ctx.beginPath();
-        ctx.strokeStyle = "#f59e0b";
-        ctx.lineWidth = 2;
-        data.forEach((v,i)=>{
-            let x = i*(c.width/data.length);
-            let y = c.height - ((v-min)/(max-min||1))* (c.height-10) - 5;
-            if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-        });
-        ctx.stroke();
-    },50);
-}
-
-// openStatus: affiche paliers de statut
-function openStatus() {
-    currentPage = "status";
-    document.getElementById("content").innerHTML = `
-        <h1>Statuts et seuils</h1>
-        <div class="card">
-            <strong>Statuts disponibles</strong>
+            <h3>Argent, Portefeuille et Total</h3>
             <ul>
-                <li>Débutant : &lt; 10 000 €</li>
-                <li>Amateur : 10 000 € – 20 000 €</li>
-                <li>Pro : 20 000 € – 50 000 €</li>
-                <li>Expert : &gt; 50 000 €</li>
+                <li><strong>Argent</strong> : cash liquide disponible pour acheter. Affiché sur le Dashboard.</li>
+                <li><strong>Portefeuille</strong> : nombre de parts possédées pour chaque action. Valeur = parts × prix courant.</li>
+                <li><strong>Total du compte</strong> = Argent + Valeur du portefeuille. C'est ce total qui détermine votre rang.</li>
             </ul>
-            <div class="helper">Votre statut actuel : <strong>${getRank()}</strong></div>
+            <div class="helper">
+                Les valeurs sont sauvegardées dans <code>localStorage</code> : argent, portfolio, historiques, bots et news.
+            </div>
         </div>
+
+        <div class="card">
+            <h3>Les actions (instruments)</h3>
+            <p>Il y a trois instruments principaux :</p>
+            <ol>
+                <li>
+                    <strong>Moni Invest (principal)</strong> — timer : 30s — volatilité faible.
+                    <ul>
+                        <li>Comportement : variations petites et régulières autour d'une valeur de référence (~100).</li>
+                        <li>Objectif : instrument « stable », faible risque/retour.</li>
+                    </ul>
+                </li>
+                <li>
+                    <strong>Crypto (secondaire)</strong> — timer : 60s — volatilité élevée.
+                    <ul>
+                        <li>Comportement : variations plus importantes que Moni Invest, plus de bruit.</li>
+                        <li>Objectif : instrument risqué, opportunité de plus hauts gains/pertes à court terme.</li>
+                    </ul>
+                </li>
+                <li>
+                    <strong>Water Co (autre)</strong> — timer : 300s (5 min) — comportement très aléatoire.
+                    <ul>
+                        <li>Comportement : pas de valeur de référence stricte, peut fluctuer fortement.</li>
+                        <li>Objectif : instrument « wild », utile si vous voulez parier sur des mouvements importants.</li>
+                    </ul>
+                </li>
+            </ol>
+            <div class="helper">Les timers indiqués sur la page Investir montrent le temps restant avant la prochaine mise à jour du prix.</div>
+        </div>
+
+        <div class="card">
+            <h3>Acheter / Investir</h3>
+            <ol>
+                <li>Ouvrez une action (Investir → cliquez sur l'action).</li>
+                <li>Dans la section "Acheter", entrez un montant en € dans le champ <em>Montant €</em>.</li>
+                <li>Cliquez sur <strong>Investir</strong> : le montant est converti en parts au prix courant et retiré de votre argent.</li>
+            </ol>
+            <div class="helper">
+                Remarques techniques :
+                <ul>
+                    <li>Si vous tapez dans un champ, l'application ne rechargera pas la vue automatiquement (empêche le champ de perdre le focus).</li>
+                    <li>Vous ne pouvez pas investir plus que votre argent disponible — une alerte s'affiche si vous essayez.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Vendre</h3>
+            <p>Deux modes de vente :</p>
+            <ul>
+                <li><strong>€/Euro</strong> : vous entrez un montant en euros que vous voulez recevoir. Le jeu calcule combien de parts cela représente et les vend au prix courant.</li>
+                <li><strong>Parts</strong> : vous entrez directement le nombre de parts à vendre.</li>
+            </ul>
+            <p>Outils rapides :</p>
+            <ul>
+                <li>Vendre 25% / 50% / 100% : calcule automatiquement la valeur correspondante en € ou en parts selon le mode sélectionné.</li>
+                <li>Vendre tout : liquide toutes vos parts pour cette action au prix courant.</li>
+            </ul>
+            <div class="helper">Des vérifications empêchent de vendre plus que vos parts disponibles.</div>
+        </div>
+
+        <div class="card">
+            <h3>Graphiques & Historique</h3>
+            <ul>
+                <li>Les historiques d'argent et de prix sont conservés localement (jusqu'à 10 000 snapshots) pour permettre des graphiques longue durée.</li>
+                <li>Dashboard → cliquez sur « Argent » pour voir l'historique détaillé (fenêtre longue).</li>
+                <li>Page d'une action → bouton pour sélectionner la fenêtre d'affichage (60 / 300 / 1000 points).</li>
+            </ul>
+            <div class="helper">
+                Si l'historique est long, le tracé montrera l'évolution du début vers la fin. Pour améliorer la lisibilité, changez la fenêtre d'affichage sur la page action.
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Bots (joueurs simulés)</h3>
+            <ul>
+                <li>Il y a 5 bots persistants pour simuler d'autres joueurs (nommés Bot1..Bot5).</li>
+                <li>Chaque bot démarre avec 3 000 €.</li>
+                <li>Comportement : achats/ventes aléatoires et petits, à intervalles simulés. Ils ne descendent jamais en dessous de 3 000 € (recapitalisation automatique si nécessaire).</li>
+                <li>Les totaux des bots sont affichés dans le classement et mis à jour régulièrement.</li>
+            </ul>
+            <div class="helper">Les bots sont intentionnellement simples. Si vous souhaitez des bots plus réalistes (réagissant aux news, momentum), on peut l'améliorer.</div>
+        </div>
+
+        <div class="card">
+            <h3>News</h3>
+            <ul>
+                <li>Une news est générée toutes les 5 minutes (300s) par défaut.</li>
+                <li>Chaque news contient :
+                    <ul>
+                        <li>un texte (ex. "Pénurie d'eau..."),</li>
+                        <li>une cible (quelle action est affectée),</li>
+                        <li>un multiplicateur d'effet (ex. ×1.2) et</li>
+                        <li>une durée d'effet (ex. 30s).</li>
+                    </ul>
+                </li>
+                <li>Les effets s'appliquent temporairement lors des prochaines mises à jour de prix (augmenteront ou diminueront la variation pour l'action ciblée).</li>
+                <li>Les news sont visibles sur le Dashboard (section News) et sauvegardées dans le journal local (newsHistory).</li>
+            </ul>
+            <div class="helper">Utilisez les news comme indices : elles peuvent suggérer d'acheter ou vendre, mais ce n'est pas une garantie.</div>
+        </div>
+
+        <div class="card">
+            <h3>Casino (Roulette & Blackjack)</h3>
+            <p>Le casino est accessible via la sidebar. Les deux jeux sont gérés localement et affectent directement votre <strong>Argent</strong>. Les résultats s'affichent directement sur la page Casino (nous ne redirigeons plus vers le Dashboard après un pari).</p>
+
+            <h4>Roulette</h4>
+            <ul>
+                <li>Options de pari : <strong>Rouge</strong>, <strong>Noir</strong> ou un <strong>Numéro (0–36)</strong>.</li>
+                <li>Payouts :
+                    <ul>
+                        <li>Couleur gagnante : paiement 2× (vous récupérez 2× votre mise, gain net = mise).</li>
+                        <li>Numéro exact : paiement 36× (gain net = 35× votre mise).</li>
+                    </ul>
+                </li>
+                <li>0 est traité comme perte pour les paris couleurs (roulette européenne simplifiée ici avec un seul 0).</li>
+                <li>Résultat : affiché dans <code>#rouletteResult</code> sur la page Casino, avec montant gagné/perdu.</li>
+                <li>Vérifications : la mise doit être positive et ≤ votre argent disponible.</li>
+            </ul>
+
+            <h4>Blackjack (version simplifiée)</h4>
+            <ul>
+                <li>Règles de base :
+                    <ul>
+                        <li>Vous placez une mise, recevez 2 cartes et le dealer 2 cartes (une visible).</li>
+                        <li>Options : <strong>Hit</strong> (tirer) ou <strong>Stand</strong> (rester).</li>
+                        <li>Les As comptent 11 ou 1 automatiquement pour éviter le bust si possible.</li>
+                        <li>Le dealer pioche jusqu'à atteindre ≥ 17.</li>
+                        <li>Résultat : gain, perte ou égalité ; affiché dans <code>#bjState</code>. La mise est appliquée immédiatement (gain = mise, perte = mise).</li>
+                    </ul>
+                </li>
+                <li>Limites : interface simple, pas d'assurance, pas de split, blackjack naturel (21 en deux cartes) traité comme gain immédiat si possible.</li>
+                <li>Restez sur la page Casino : les résultats s'affichent ici et vous pouvez relancer d'autres parties.</li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h3>Données & Persistance</h3>
+            <ul>
+                <li>Toutes les données importantes sont sauvegardées dans <code>localStorage</code> : argent, portfolio, actions, historiques, bots et news.</li>
+                <li>Si vous changez de navigateur ou videz le stockage, la progression sera perdue.</li>
+                <li>Les historiques sont limités (par défaut jusqu'à 10 000 snapshots) pour éviter d'utiliser trop de mémoire.</li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h3>Comportements techniques importants / Résolution de bugs</h3>
+            <ul>
+                <li>La page n'actualise pas automatiquement les views d'entrée pendant que vous tapez (focus actif sur input) — cela évite que le champ perde le focus.</li>
+                <li>Si vous constatez que les chiffres ou timers ne s'affichent pas correctement, attendez un tick (le moteur tourne toutes les secondes) ou rafraîchissez la page manuellement.</li>
+                <li>Les bots sont simulés côté client : ils peuvent augmenter ou diminuer, mais ne tomberont pas en dessous de 3000 €.</li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h3>Conseils & Bonnes pratiques</h3>
+            <ul>
+                <li>Pour observer des tendances, utilisez le graphique complet dans "Historique de l'argent" (Dashboard → cliquez sur Argent) ou augmentez la fenêtre sur les pages d'actions.</li>
+                <li>Moni Invest est idéal pour une stratégie conservatrice ; Crypto pour des spéculations ; Water Co si vous aimez le risque.</li>
+                <li>Utilisez les news comme un indice, pas comme une certitude.</li>
+                <li>Commencez petit au casino — c'est du hasard. Le casino est conçu pour le divertissement, pas pour s'enrichir facilement.</li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h3>Support & Améliorations possibles</h3>
+            <p>
+                Si tu veux que j'ajoute :
+                <ul>
+                    <li>Des bots plus intelligents (réactifs aux news, stratégies),</li>
+                    <li>Des réglages UI pour modifier les timers (30s/60s/300s) depuis les options,</li>
+                    <li>Des animations / cartes graphiques pour le blackjack,</li>
+                    <li>Ou un export/import de sauvegarde — dis-moi et je prépare une PR.</li>
+                </ul>
+            </p>
+        </div>
+
         <button onclick="dashboard()">⬅ Retour</button>
     `;
 }
+ // ==== FIN HELP PAGE ====
 
-// ==== NEWS GENERATOR =====
+ // ==== NEWS GENERATOR =====
 let newsTimer = localStorage.getItem("newsTimer") ? parseInt(localStorage.getItem("newsTimer")) : 300; // 5min
 function generateNews(){
     // sample news items that influence actions

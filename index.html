@@ -20,7 +20,7 @@ body {
 }
 
 .menu-item {
-    margin: 15px 0;
+    margin: 12px 0;
     cursor: pointer;
     color: #cbd5f5;
     font-weight: bold;
@@ -90,6 +90,12 @@ h1 { margin-top: 0; }
 .badge { background:#111827; padding:6px 10px; border-radius:8px; color:#cbd5f5; }
 .quick-buttons button { padding:6px 10px; font-size:0.9em; margin-right:6px; }
 .helper { color:#9ca3af; font-size:0.9em; margin-top:8px; }
+
+/* Casino */
+.casino-grid { display:flex; gap:12px; align-items:flex-start; }
+.casino-col { flex:1; }
+.small-input { width:100px; padding:6px; }
+.center { text-align:center; }
 </style>
 </head>
 <body>
@@ -98,6 +104,7 @@ h1 { margin-top: 0; }
     <h2>💰 Money Game</h2>
     <div class="menu-item" onclick="dashboard()">🏠 Accueil</div>
     <div class="menu-item" onclick="investPage()">📈 Investir</div>
+    <div class="menu-item" onclick="openCasino()">🎲 Casino</div>
     <div class="menu-item" onclick="helpPage()">❓ Help</div>
 </div>
 
@@ -105,7 +112,7 @@ h1 { margin-top: 0; }
 
 <script>
 // ===== VARIABLES GLOBALES =====
-let currentPage = "dashboard"; // dashboard / invest / action_x / help
+let currentPage = "dashboard"; // dashboard / invest / action_x / help / casino
 let currentActionId = null;
 
 let argent = localStorage.getItem("argent")
@@ -116,13 +123,14 @@ let portfolio = localStorage.getItem("portfolio")
     ? JSON.parse(localStorage.getItem("portfolio"))
     : {0:0,1:0,2:0};
 
+// action definitions with names / initial prices; timers set via nextTimer
 const actions = [
-    loadAction(0,"Alpha Corp",100),
-    loadAction(1,"Beta Industries",250),
-    loadAction(2,"Gamma Tech",500)
+    loadAction(0,"Moni Invest (principal)",100),
+    loadAction(1,"Crypto (secondaire)",100),
+    loadAction(2,"Water Co (autre)",500)
 ];
 
-// histories for charts
+// histories for charts (extended retention)
 let argentHistory = localStorage.getItem("argentHistory")
     ? JSON.parse(localStorage.getItem("argentHistory"))
     : [argent];
@@ -131,33 +139,73 @@ let rankHistory = localStorage.getItem("rankHistory")
     ? JSON.parse(localStorage.getItem("rankHistory"))
     : [getRankNumeric(argent)];
 
-// simple fake players list for the "classement" view (single-player for now)
-const players = localStorage.getItem("players")
-    ? JSON.parse(localStorage.getItem("players"))
-    : [
-        {name: "Vous", total: argent},
-        {name: "Joueur2", total: 8000},
-        {name: "Joueur3", total: 15000},
-        {name: "Joueur4", total: 30000}
-    ];
+// news history & active effects
+let newsHistory = localStorage.getItem("newsHistory")
+    ? JSON.parse(localStorage.getItem("newsHistory"))
+    : [];
+let activeNewsEffects = {}; // {actionId: {mult:1.2, remainingSecs:20, text:"..."} }
 
+// BOTs: 5 robots starting at 3000
+let bots = localStorage.getItem("bots")
+    ? JSON.parse(localStorage.getItem("bots"))
+    : createInitialBots();
+
+function createInitialBots(){
+    const list = [];
+    for(let i=1;i<=5;i++){
+        list.push({
+            id: "Bot"+i,
+            cash: 3000,
+            portfolio: {0:0,1:0,2:0}
+        });
+    }
+    localStorage.setItem("bots", JSON.stringify(list));
+    return list;
+}
+
+// Build players list derived from bots + you
+function updatePlayersList(){
+    const players = [];
+    players.push({name: "Vous", total: argent + totalPortfolioValue()});
+    bots.forEach(b=>{
+        const total = b.cash + botPortfolioValue(b);
+        players.push({name: b.id, total: total});
+    });
+    localStorage.setItem("players", JSON.stringify(players));
+    return players;
+}
+
+// save bots and players
+function saveBotsAndPlayers(){
+    localStorage.setItem("bots", JSON.stringify(bots));
+    updatePlayersList();
+}
+
+// helper to calculate bot portfolio value
+function botPortfolioValue(bot) {
+    let v = 0;
+    actions.forEach(a=> v += (bot.portfolio[a.id]||0)*a.prix);
+    return v;
+}
+
+// loadAction / timer logic
 function loadAction(id, nom, prix) {
     let saved = localStorage.getItem("action_"+id);
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+        let obj = JSON.parse(saved);
+        // ensure name updated if code changed
+        obj.nom = nom;
+        return obj;
+    }
     return { id, nom, prix, prev: prix, timer: nextTimer(id), history: [prix] };
 }
 
 // timers adaptés par action
 function nextTimer(id) {
-    // suivant ta proposition :
-    // - action 0 (principal) : toutes les 30s
-    // - action 1 (secondaire) : toutes les 60s (1min)
-    // - action 2 (autre) : toutes les 300s (5min)
-    if(id === 0) return 30;
-    if(id === 1) return 60;
-    if(id === 2) return 300;
-    // fallback : aléatoire entre 30s et 2min
-    return Math.floor(Math.random() * 91) + 30; // 30..120
+    if(id === 0) return 30;   // principal : 30s
+    if(id === 1) return 60;   // secondaire : 60s
+    if(id === 2) return 300;  // autre : 300s (5min)
+    return Math.floor(Math.random() * 91) + 30; // fallback 30..120
 }
 
 // helper pour détecter si l'utilisateur est en train d'écrire (empêche le re-render)
@@ -179,23 +227,20 @@ function save() {
     localStorage.setItem("portfolio", JSON.stringify(portfolio));
     actions.forEach(a=>localStorage.setItem("action_"+a.id, JSON.stringify(a)));
 
-    // record argent snapshot for charting (limit length)
+    // extend retention to 10000 snapshots so we can show long timelines
     argentHistory.push(parseFloat(argent));
-    if(argentHistory.length>2000) argentHistory.shift();
+    if(argentHistory.length>10000) argentHistory.shift();
     localStorage.setItem("argentHistory", JSON.stringify(argentHistory));
 
-    // record rank snapshot (numeric) for charting
     rankHistory.push(getRankNumeric(argent + totalPortfolioValue()));
-    if(rankHistory.length>2000) rankHistory.shift();
+    if(rankHistory.length>10000) rankHistory.shift();
     localStorage.setItem("rankHistory", JSON.stringify(rankHistory));
 
-    // update players (keep "Vous" synced)
-    let you = players.find(p=>p.name==="Vous");
-    if(you) you.total = argent + totalPortfolioValue();
-    localStorage.setItem("players", JSON.stringify(players));
+    localStorage.setItem("newsHistory", JSON.stringify(newsHistory));
+    saveBotsAndPlayers();
 }
 
-// helper to calculate total portfolio value
+// helper to calculate total portfolio value (user)
 function totalPortfolioValue() {
     let v = 0;
     actions.forEach(a=> v += portfolio[a.id]*a.prix);
@@ -213,17 +258,19 @@ function getRankNumeric(total) {
 // ==== CALCUL DU RANG (texte) ====
 function getRank() {
     let total = argent + totalPortfolioValue();
-
     if(total<10000) return "Débutant";
     else if(total<20000) return "Amateur";
     else if(total<50000) return "Pro";
     else return "Expert";
 }
 
-// ==== DASHBOARD AMÉLIORÉ ====
+// ==== DASHBOARD ====
 function dashboard() {
     currentPage = "dashboard";
+    updatePlayersList();
     let value = totalPortfolioValue();
+    // latest news
+    const latestNews = newsHistory.length? newsHistory[newsHistory.length-1].text : "Aucune news récente.";
 
     let html = `<h1>Tableau de bord</h1>
         <div class="row">
@@ -236,7 +283,7 @@ function dashboard() {
                         </div>
                         <div class="badge">${portfolioValueLabel()}</div>
                     </div>
-                    <canvas id="moneyMiniChart" width="320" height="100"></canvas>
+                    <canvas id="moneyMiniChart" width="320" height="120"></canvas>
                     <div class="helper">Cliquez pour voir plus de détails sur votre historique d'argent.</div>
                 </div>
 
@@ -269,10 +316,35 @@ function dashboard() {
     });
     html+=`</div></div>
             </div>
-        </div>`;
+        </div>
+
+        <div class="row">
+            <div class="col small">
+                <div class="card">
+                    <strong>📰 News (dernière)</strong><br>
+                    <div style="margin-top:8px;">${latestNews}</div>
+                    <div class="helper">Une news apparaît toutes les 5 minutes et peut influencer les actions.</div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="card">
+                    <strong>Classement rapide</strong><br>
+                    <div style="margin-top:8px;">
+                        <ol>`;
+    const players = updatePlayersList();
+    // show top 5
+    players.slice(0,5).forEach(p=>{
+        html+=`<li>${p.name} — ${p.total.toFixed(2)} €</li>`;
+    });
+    html+=`</ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
     document.getElementById("content").innerHTML = html;
 
-    // draw mini charts
+    // draw mini charts (more points, uses entire history window)
     drawMiniMoneyChart();
     drawMiniRankChart();
 }
@@ -311,9 +383,9 @@ function openAction(id) {
         <canvas id="chart" width="700" height="250"></canvas>
 
         <div class="card">
-            <button onclick="drawChart(${id},60)">1h</button>
-            <button onclick="drawChart(${id},300)">1 jour</button>
-            <button onclick="drawChart(${id},1000)">1 semaine</button>
+            <button onclick="drawChart(${id},60)">60 pts</button>
+            <button onclick="drawChart(${id},300)">300 pts</button>
+            <button onclick="drawChart(${id},1000)">1000 pts</button>
         </div>
 
         <div class="card">
@@ -371,6 +443,7 @@ function setSellPercent(id, percent) {
 function drawChart(id, points) {
     let a = actions[id];
     let data = a.history.slice(-points);
+    if(data.length<2) data = a.history; // show full if not enough
     let c = document.getElementById("chart");
     if(!c) return;
     let ctx = c.getContext("2d");
@@ -392,17 +465,20 @@ function drawChart(id, points) {
     ctx.stroke();
 }
 
-// mini money chart on dashboard
+// mini money chart on dashboard (large window so evolution visible)
 function drawMiniMoneyChart() {
     let c = document.getElementById("moneyMiniChart");
     if(!c) return;
     let ctx = c.getContext("2d");
-    let data = argentHistory.slice(-60);
+    // show as much as available (up to 1000 points for performance)
+    let data = argentHistory.slice(-1000);
+    if(data.length<2) data = argentHistory;
     ctx.clearRect(0,0,c.width,c.height);
     let max = Math.max(...data);
     let min = Math.min(...data);
     ctx.beginPath();
     ctx.strokeStyle = "#60a5fa";
+    ctx.lineWidth = 1.5;
     data.forEach((v,i)=>{
         let x = i*(c.width/data.length);
         let y = c.height - ((v-min)/(max-min||1))* (c.height-10) - 5;
@@ -415,12 +491,14 @@ function drawMiniRankChart() {
     let c = document.getElementById("rankMiniChart");
     if(!c) return;
     let ctx = c.getContext("2d");
-    let data = rankHistory.slice(-80);
+    let data = rankHistory.slice(-500);
+    if(data.length<2) data = rankHistory;
     ctx.clearRect(0,0,c.width,c.height);
     let max = Math.max(...data);
     let min = Math.min(...data);
     ctx.beginPath();
     ctx.strokeStyle = "#fbbf24";
+    ctx.lineWidth = 1.5;
     data.forEach((v,i)=>{
         let x = i*(c.width/data.length);
         let y = c.height - ((v-min)/(max-min||1))* (c.height-10) - 5;
@@ -431,7 +509,9 @@ function drawMiniRankChart() {
 
 // ==== BUY / SELL ====
 function buy(id) {
-    let amount = parseFloat(document.getElementById("buyAmount").value);
+    let elem = document.getElementById("buyAmount");
+    if(!elem) return;
+    let amount = parseFloat(elem.value);
     let a = actions[id];
     if(!amount || amount<=0) return alert("Montant invalide");
     if(amount>argent) return alert("Montant supérieur à l'argent disponible");
@@ -503,7 +583,7 @@ function helpPage() {
         <div class="card">
             <h3>Courbes</h3>
             <p>
-                📈 Les courbes montrent l'évolution du prix. Utilisez les boutons 1h / 1 jour / 1 semaine.
+                📈 Les courbes montrent l'évolution du prix. Utilisez les boutons pour changer la fenêtre d'affichage.
             </p>
         </div>
 
@@ -528,24 +608,25 @@ function helpPage() {
 }
 
 // ==== DETAILED VIEWS FOR CARDS ====
-// openMoney: affiche l'historique détaillé de l'argent
+// openMoney: affiche l'historique détaillé de l'argent (fenêtre large)
 function openMoney() {
     currentPage = "money";
     document.getElementById("content").innerHTML = `
         <h1>Historique de l'argent</h1>
         <div class="card">
             <strong>Argent disponible : ${argent.toFixed(2)} €</strong>
-            <canvas id="moneyChart" width="900" height="250"></canvas>
-            <div class="helper">Historique enregistré à chaque action et tick de marché (dernier ${argentHistory.length} snapshots).</div>
+            <canvas id="moneyChart" width="1000" height="300"></canvas>
+            <div class="helper">Historique enregistré (dernier ${argentHistory.length} snapshots).</div>
         </div>
         <button onclick="dashboard()">⬅ Retour</button>
     `;
-    // draw after inserting DOM
     setTimeout(()=> {
         let c = document.getElementById("moneyChart");
         if(!c) return;
         let ctx = c.getContext("2d");
-        let data = argentHistory.slice(-500);
+        // use up to 5000 points to draw long timeline
+        let data = argentHistory.slice(-5000);
+        if(data.length<2) data = argentHistory;
         ctx.clearRect(0,0,c.width,c.height);
         let max = Math.max(...data);
         let min = Math.min(...data);
@@ -564,17 +645,16 @@ function openMoney() {
 // openRank: affiche classement des joueurs et evolution du rang
 function openRank() {
     currentPage = "rank";
-    // sort players by total desc
-    let sorted = players.slice().sort((a,b)=>b.total - a.total);
+    let players = updatePlayersList().slice().sort((a,b)=>b.total - a.total);
     let html = `<h1>Classement des joueurs</h1>
         <div class="card">
             <strong>Classement</strong><br><ol>`;
-    sorted.forEach(p=>{
+    players.forEach(p=>{
         html+=`<li>${p.name} — ${p.total.toFixed(2)} €</li>`;
     });
     html+=`</ol>
             <canvas id="rankChart" width="900" height="200"></canvas>
-            <div class="helper">Graphique d'évolution du rang (échelle interne). Dans cette version solo, la liste est simulée.</div>
+            <div class="helper">Graphique d'évolution du rang (échelle interne). Les bots sont simulés.</div>
         </div>
         <button onclick="dashboard()">⬅ Retour</button>`;
     document.getElementById("content").innerHTML = html;
@@ -583,7 +663,8 @@ function openRank() {
         let c = document.getElementById("rankChart");
         if(!c) return;
         let ctx = c.getContext("2d");
-        let data = rankHistory.slice(-500);
+        let data = rankHistory.slice(-1000);
+        if(data.length<2) data = rankHistory;
         ctx.clearRect(0,0,c.width,c.height);
         let max = Math.max(...data);
         let min = Math.min(...data);
@@ -618,40 +699,333 @@ function openStatus() {
     `;
 }
 
+// ==== NEWS GENERATOR =====
+let newsTimer = localStorage.getItem("newsTimer") ? parseInt(localStorage.getItem("newsTimer")) : 300; // 5min
+function generateNews(){
+    // sample news items that influence actions
+    const pool = [
+        {text: "Pénurie d'eau signalée : hausse probable des actions Water Co", target:2, mult:1.20},
+        {text: "Nouvelle règlementation favorable aux banques : légère hausse Moni Invest", target:0, mult:1.08},
+        {text: "Crash crypto mineur : Crypto chute", target:1, mult:0.80},
+        {text: "Rumeur d'innovation sur Water Co : action volatille", target:2, mult:1.15},
+        {text: "Crypto adopte une nouvelle tech, volatilité accrue", target:1, mult:1.10}
+    ];
+    const pick = pool[Math.floor(Math.random()*pool.length)];
+    const news = { time: Date.now(), text: pick.text, target: pick.target, mult: pick.mult, duration: 30 }; // effect lasts 30s
+    newsHistory.push(news);
+    if(newsHistory.length>200) newsHistory.shift();
+    // activate effect
+    activeNewsEffects[pick.target] = {mult: pick.mult, remainingSecs: news.duration, text: pick.text};
+    localStorage.setItem("newsHistory", JSON.stringify(newsHistory));
+    return news;
+}
+
+// ==== BOT SIMULATION ====
+function simulateBots() {
+    bots.forEach(bot=>{
+        // small probability each second to act
+        if(Math.random() < 0.02){ // ~ once every 50s per bot on average
+            const actionId = Math.floor(Math.random()*actions.length);
+            const a = actions[actionId];
+            // choose buy or sell (50/50)
+            if(Math.random()<0.5){
+                // buy small amount (10..150)
+                let amount = Math.round((Math.random()*140)+10);
+                // ensure bot cash doesn't drop below 3000
+                if(bot.cash - amount < 3000) {
+                    amount = Math.max(0, Math.floor(bot.cash - 3000));
+                }
+                if(amount>0){
+                    bot.portfolio[actionId] = (bot.portfolio[actionId]||0) + (amount / a.prix);
+                    bot.cash -= amount;
+                }
+            } else {
+                // sell small percent of holdings
+                const parts = bot.portfolio[actionId] || 0;
+                if(parts>0){
+                    const pct = (Math.random()*0.6); // sell up to 60%
+                    const sellParts = parts * pct;
+                    bot.portfolio[actionId] = Math.max(0, parts - sellParts);
+                    bot.cash += sellParts * a.prix;
+                }
+            }
+        }
+        // ensure bot total doesn't drop below 3000: top-up if market drop made them <3000
+        const total = bot.cash + botPortfolioValue(bot);
+        if(total < 3000){
+            bot.cash += (3000 - total);
+        }
+    });
+    saveBotsAndPlayers();
+}
+
 // ==== MARKET LOOP =====
+// volatility map per action id
+const volMap = {
+    0: 0.02,  // Moni Invest stable ~2%
+    1: 0.12,  // Crypto volatile ~12%
+    2: 0.40   // Water Co very random ~40% (could be large)
+};
+
 setInterval(()=>{
+    // news timer countdown
+    newsTimer--;
+    if(newsTimer<=0){
+        generateNews();
+        newsTimer = 300; // reset 5min
+        localStorage.setItem("newsTimer", newsTimer);
+    }
+    // decrement active news effects
+    Object.keys(activeNewsEffects).forEach(k=>{
+        activeNewsEffects[k].remainingSecs--;
+        if(activeNewsEffects[k].remainingSecs<=0) delete activeNewsEffects[k];
+    });
+
     actions.forEach(a=>{
         a.timer--;
         if(a.timer<=0){
-            a.prev=a.prix;
-            a.prix=Math.max(10,Math.floor(a.prix*(1+(Math.random()*0.2-0.1))));
+            a.prev = a.prix;
+            // compute volatility influenced by news effects
+            const baseVol = volMap[a.id] || 0.1;
+            // if there's an active effect for this action, apply that multiplier with some randomness
+            const effect = activeNewsEffects[a.id];
+            let mult = 1;
+            if(effect) mult = effect.mult;
+            // different strategies per action:
+            if(a.id === 0){
+                // Moni Invest: small gaussian-ish change around baseVol
+                const changeFactor = 1 + ((Math.random()*2-1) * baseVol) * (Math.random()*0.8 + 0.6);
+                a.prix = Math.max(5, Math.round(a.prix * changeFactor * mult));
+            } else if(a.id === 1){
+                // Crypto: larger swings, keep around 100 mean (some pull to 100)
+                let drift = 1 + ((100 - a.prix) / 10000); // slight pull
+                const change = 1 + ((Math.random()*2-1) * baseVol);
+                a.prix = Math.max(2, Math.round(a.prix * change * drift * mult));
+            } else {
+                // Water Co / other: very random, can change a lot
+                const change = 1 + ((Math.random()*2-1) * baseVol);
+                a.prix = Math.max(1, Math.round(a.prix * change * mult));
+            }
+
+            // keep history and cap
             a.history.push(a.prix);
-            if(a.history.length>2000) a.history.shift();
-            // nouvelle logique de timer par action
-            a.timer=nextTimer(a.id);
+            if(a.history.length>10000) a.history.shift();
+            // reset timer per action
+            a.timer = nextTimer(a.id);
             save();
         }
     });
 
-    // Eviter de re-render la page si l'utilisateur est en train de taper dans un input
+    // simulate bots occasionally
+    simulateBots();
+
+    // update UI only if user not typing
     if(!isUserTyping()){
         if(currentPage === "invest") investPage();
         if(currentPage && currentPage.startsWith("action_")) openAction(currentActionId);
+        if(currentPage === "dashboard") dashboard(); // refresh small data like timers
     }
 
-    // periodic snapshot even if market didn't change to keep money/rank history flowing
+    // periodic snapshot for charts
     argentHistory.push(parseFloat(argent));
-    if(argentHistory.length>2000) argentHistory.shift();
+    if(argentHistory.length>10000) argentHistory.shift();
     rankHistory.push( getRankNumeric(argent + totalPortfolioValue()) );
-    if(rankHistory.length>2000) rankHistory.shift();
+    if(rankHistory.length>10000) rankHistory.shift();
     localStorage.setItem("argentHistory", JSON.stringify(argentHistory));
     localStorage.setItem("rankHistory", JSON.stringify(rankHistory));
-    localStorage.setItem("players", JSON.stringify(players));
-
+    localStorage.setItem("newsHistory", JSON.stringify(newsHistory));
+    localStorage.setItem("bots", JSON.stringify(bots));
 },1000);
 
 // ==== START ====
+updatePlayersList();
 dashboard();
+
+// ===== CASINO IMPLEMENTATION (Roulette + Blackjack) =====
+function openCasino(){
+    currentPage = "casino";
+    document.getElementById("content").innerHTML = `
+        <h1>🎲 Casino</h1>
+        <div class="casino-grid">
+            <div class="casino-col card">
+                <h3>Roulette</h3>
+                <div>
+                    <label>Mise (€): <input id="rouletteBet" class="small-input" type="number" value="10"></label>
+                </div>
+                <div style="margin-top:8px;">
+                    <button onclick="playRoulette('red')">Parier Rouge</button>
+                    <button onclick="playRoulette('black')">Parier Noir</button>
+                    <button onclick="openRouletteNumberInput()">Parier N°</button>
+                </div>
+                <div id="rouletteNumberInput" style="display:none;margin-top:8px;">
+                    <label>N° (0-36): <input id="rouletteNumber" class="small-input" type="number" min="0" max="36"></label>
+                    <button onclick="playRoulette('number')">Parier N°</button>
+                </div>
+                <div id="rouletteResult" class="helper" style="margin-top:10px;"></div>
+            </div>
+
+            <div class="casino-col card">
+                <h3>Blackjack</h3>
+                <div>
+                    <label>Mise (€): <input id="bjBet" class="small-input" type="number" value="20"></label>
+                </div>
+                <div style="margin-top:8px;">
+                    <button onclick="startBlackjack()">Démarrer</button>
+                    <button onclick="hitBlackjack()" id="bjHit" style="display:none;">Hit</button>
+                    <button onclick="standBlackjack()" id="bjStand" style="display:none;">Stand</button>
+                </div>
+                <div id="bjState" class="helper" style="margin-top:10px;"></div>
+            </div>
+        </div>
+        <br>
+        <button onclick="dashboard()">⬅ Retour</button>
+    `;
+}
+
+// Roulette helpers
+function openRouletteNumberInput(){ document.getElementById('rouletteNumberInput').style.display='block'; }
+function playRoulette(mode){
+    let bet = parseFloat(document.getElementById("rouletteBet").value);
+    if(!bet || bet<=0) return alert("Montant invalide");
+    if(bet>argent) return alert("Pas assez d'argent");
+    let number = Math.floor(Math.random()*37); // 0..36
+    const redNumbers = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]); // approximate mapping
+    let resultText = `La bille tombe sur ${number} (${ redNumbers.has(number) ? 'rouge' : (number===0? 'vert' : 'noir') }). `;
+    let win = 0;
+    if(mode === 'red' || mode === 'black'){
+        if(number===0){
+            win = 0;
+        } else {
+            const isRed = redNumbers.has(number);
+            if((mode==='red' && isRed) || (mode==='black' && !isRed)) win = bet * 2;
+        }
+    } else if(mode === 'number'){
+        const pick = parseInt(document.getElementById("rouletteNumber").value);
+        if(isNaN(pick) || pick<0 || pick>36) return alert("Numéro invalide");
+        if(pick === number) win = bet * 36;
+    }
+    if(win>0){
+        argent += (win - bet);
+        resultText += `Vous gagnez ${ (win - bet).toFixed(2) } € (retour total ${win.toFixed(2)} €).`;
+    } else {
+        argent -= bet;
+        resultText += `Vous perdez ${bet.toFixed(2)} €.`;
+    }
+    save();
+    document.getElementById("rouletteResult").innerText = resultText;
+    dashboard();
+}
+
+// Simple Blackjack implementation
+let bjGame = null;
+function startBlackjack(){
+    let bet = parseFloat(document.getElementById("bjBet").value);
+    if(!bet || bet<=0) return alert("Montant invalide");
+    if(bet>argent) return alert("Pas assez d'argent");
+    // initialize deck (simplified)
+    bjGame = {
+        bet: bet,
+        deck: createDeck(),
+        player: [],
+        dealer: [],
+        finished: false
+    };
+    // deal
+    bjGame.player.push(drawCard(bjGame.deck));
+    bjGame.player.push(drawCard(bjGame.deck));
+    bjGame.dealer.push(drawCard(bjGame.deck));
+    bjGame.dealer.push(drawCard(bjGame.deck));
+    document.getElementById("bjHit").style.display = 'inline-block';
+    document.getElementById("bjStand").style.display = 'inline-block';
+    updateBJState();
+}
+function createDeck(){
+    const vals = [2,3,4,5,6,7,8,9,10,10,10,10,11]; // 10 x4 for JQK, 11 for A
+    let deck = [];
+    for(let i=0;i<4;i++){
+        for(let v of vals) deck.push(v);
+    }
+    // shuffle
+    for(let i=deck.length-1;i>0;i--){
+        const j = Math.floor(Math.random()*(i+1));
+        [deck[i],deck[j]] = [deck[j],deck[i]];
+    }
+    return deck;
+}
+function drawCard(deck){ if(deck.length===0) deck = createDeck(); return deck.pop(); }
+function sumHand(hand){
+    let sum = hand.reduce((s,v)=>s+v,0);
+    // handle aces (11 -> 1 if bust)
+    for(let i=0;i<hand.length;i++){
+        if(sum>21 && hand.includes(11)){
+            sum -= 10; // convert one ace from 11 to 1
+            // remove only one conversion at a time
+            // continue if still >21 and more aces
+            hand[hand.indexOf(11)] = 1;
+        }
+    }
+    return sum;
+}
+function updateBJState(){
+    const state = document.getElementById("bjState");
+    if(!bjGame) return;
+    const pSum = sumHand(bjGame.player.slice());
+    const dSum = sumHand([bjGame.dealer[0]]); // show only one dealer card
+    state.innerHTML = `Vos cartes: ${bjGame.player.join(', ')} (total ${pSum})<br>Dealer: ${bjGame.dealer[0]}, ?`;
+    if(pSum===21){
+        finishBlackjack();
+    }
+    if(pSum>21){
+        finishBlackjack();
+    }
+}
+function hitBlackjack(){
+    if(!bjGame) return;
+    bjGame.player.push(drawCard(bjGame.deck));
+    updateBJState();
+    const pSum = sumHand(bjGame.player.slice());
+    if(pSum>21) finishBlackjack();
+}
+function standBlackjack(){
+    if(!bjGame) return;
+    // dealer draws until 17
+    let dSum = sumHand(bjGame.dealer.slice());
+    while(dSum < 17){
+        bjGame.dealer.push(drawCard(bjGame.deck));
+        dSum = sumHand(bjGame.dealer.slice());
+    }
+    finishBlackjack();
+}
+function finishBlackjack(){
+    document.getElementById("bjHit").style.display = 'none';
+    document.getElementById("bjStand").style.display = 'none';
+    if(!bjGame) return;
+    const pSum = sumHand(bjGame.player.slice());
+    const dSum = sumHand(bjGame.dealer.slice());
+    let result = '';
+    if(pSum>21){
+        result = `Vous avez ${pSum} (bust). Vous perdez ${bjGame.bet.toFixed(2)} €`;
+        argent -= bjGame.bet;
+    } else if(dSum>21){
+        result = `Dealer ${dSum} (bust). Vous gagnez ${bjGame.bet.toFixed(2)} €`;
+        argent += bjGame.bet;
+    } else if(pSum > dSum){
+        result = `Vous ${pSum} vs Dealer ${dSum}. Vous gagnez ${bjGame.bet.toFixed(2)} €`;
+        argent += bjGame.bet;
+    } else if(pSum === dSum){
+        result = `Égalité ${pSum}. Mise remboursée.`;
+    } else {
+        result = `Vous ${pSum} vs Dealer ${dSum}. Vous perdez ${bjGame.bet.toFixed(2)} €`;
+        argent -= bjGame.bet;
+    }
+    save();
+    document.getElementById("bjState").innerHTML += `<br><strong>${result}</strong>`;
+    bjGame = null;
+    dashboard();
+}
+
+// ==== END CASINO ====
+
 </script>
 </body>
 </html>

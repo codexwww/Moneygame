@@ -79,6 +79,17 @@ button {
 button:hover { background: #16a34a; }
 
 h1 { margin-top: 0; }
+
+/* New styles for dashboard layout */
+.row { display:flex; gap:15px; align-items:flex-start; }
+.col { flex:1; }
+.small { width:360px; }
+.card-clickable { cursor:pointer; }
+.kv { display:flex; align-items:center; justify-content:space-between; }
+.meta { color:#cbd5f5; font-size:0.9em; }
+.badge { background:#111827; padding:6px 10px; border-radius:8px; color:#cbd5f5; }
+.quick-buttons button { padding:6px 10px; font-size:0.9em; margin-right:6px; }
+.helper { color:#9ca3af; font-size:0.9em; margin-top:8px; }
 </style>
 </head>
 <body>
@@ -111,6 +122,25 @@ const actions = [
     loadAction(2,"Gamma Tech",500)
 ];
 
+// histories for charts
+let argentHistory = localStorage.getItem("argentHistory")
+    ? JSON.parse(localStorage.getItem("argentHistory"))
+    : [argent];
+
+let rankHistory = localStorage.getItem("rankHistory")
+    ? JSON.parse(localStorage.getItem("rankHistory"))
+    : [getRankNumeric(argent)];
+
+// simple fake players list for the "classement" view (single-player for now)
+const players = localStorage.getItem("players")
+    ? JSON.parse(localStorage.getItem("players"))
+    : [
+        {name: "Vous", total: argent},
+        {name: "Joueur2", total: 8000},
+        {name: "Joueur3", total: 15000},
+        {name: "Joueur4", total: 30000}
+    ];
+
 function loadAction(id, nom, prix) {
     let saved = localStorage.getItem("action_"+id);
     if (saved) return JSON.parse(saved);
@@ -123,12 +153,41 @@ function save() {
     localStorage.setItem("argent", argent);
     localStorage.setItem("portfolio", JSON.stringify(portfolio));
     actions.forEach(a=>localStorage.setItem("action_"+a.id, JSON.stringify(a)));
+
+    // record argent snapshot for charting (limit length)
+    argentHistory.push(parseFloat(argent));
+    if(argentHistory.length>2000) argentHistory.shift();
+    localStorage.setItem("argentHistory", JSON.stringify(argentHistory));
+
+    // record rank snapshot (numeric) for charting
+    rankHistory.push(getRankNumeric(argent + totalPortfolioValue()));
+    if(rankHistory.length>2000) rankHistory.shift();
+    localStorage.setItem("rankHistory", JSON.stringify(rankHistory));
+
+    // update players (keep "Vous" synced)
+    let you = players.find(p=>p.name==="Vous");
+    if(you) you.total = argent + totalPortfolioValue();
+    localStorage.setItem("players", JSON.stringify(players));
 }
 
-// ==== CALCUL DU RANG ====
+// helper to calculate total portfolio value
+function totalPortfolioValue() {
+    let v = 0;
+    actions.forEach(a=> v += portfolio[a.id]*a.prix);
+    return v;
+}
+
+// numeric rank for charting (higher is better)
+function getRankNumeric(total) {
+    if(total<10000) return 1;
+    else if(total<20000) return 2;
+    else if(total<50000) return 3;
+    else return 4;
+}
+
+// ==== CALCUL DU RANG (texte) ====
 function getRank() {
-    let total = argent;
-    actions.forEach(a=>total += portfolio[a.id]*a.prix);
+    let total = argent + totalPortfolioValue();
 
     if(total<10000) return "Débutant";
     else if(total<20000) return "Amateur";
@@ -139,20 +198,64 @@ function getRank() {
 // ==== DASHBOARD AMÉLIORÉ ====
 function dashboard() {
     currentPage = "dashboard";
-    let value = 0;
-    actions.forEach(a => value += portfolio[a.id]*a.prix);
+    let value = totalPortfolioValue();
 
     let html = `<h1>Tableau de bord</h1>
-        <div class="card">💰 Argent disponible : ${argent.toFixed(2)} €</div>
-        <div class="card">💼 Valeur du portefeuille : ${value.toFixed(2)} €</div>
-        <div class="card">🏅 Rang : ${getRank()}</div>
-        <div class="card">
-            <strong>Détails du portefeuille :</strong><br>`;
+        <div class="row">
+            <div class="col small">
+                <div class="card card-clickable" onclick="openMoney()"> 
+                    <div class="kv">
+                        <div>
+                            <strong>💰 Argent disponible</strong><br>
+                            <span class="meta">${argent.toFixed(2)} €</span>
+                        </div>
+                        <div class="badge">${portfolioValueLabel()}</div>
+                    </div>
+                    <canvas id="moneyMiniChart" width="320" height="100"></canvas>
+                    <div class="helper">Cliquez pour voir plus de détails sur votre historique d'argent.</div>
+                </div>
+
+                <div class="card card-clickable" onclick="openStatus()">
+                    <strong>🏷️ Statut</strong><br>
+                    <div style="margin-top:8px;">
+                        <span style="font-size:1.1em; font-weight:bold;">${getRank()}</span>
+                        <div class="helper">Cliquez pour voir les paliers de statut et seuils associés.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col">
+                <div class="card card-clickable" onclick="openRank()">
+                    <strong>🏅 Rang (global)</strong><br>
+                    <div style="margin-top:8px;">
+                        <span style="font-size:1.2em; font-weight:bold;">#1 (solo)</span>
+                        <div class="helper">Cliquez pour afficher le classement des joueurs et l'évolution du rang.</div>
+                    </div>
+                    <canvas id="rankMiniChart" width="600" height="120"></canvas>
+                </div>
+
+                <div class="card">
+                    <strong>💼 Valeur du portefeuille</strong><br>
+                    <span class="meta">${value.toFixed(2)} €</span>
+                    <div style="margin-top:10px;">
+                        <strong>Détails :</strong><br>`;
     actions.forEach(a=>{
         html+=`${a.nom} : ${portfolio[a.id].toFixed(4)} parts (valeur : ${(portfolio[a.id]*a.prix).toFixed(2)} €)<br>`;
     });
-    html+=`</div>`;
+    html+=`</div></div>
+            </div>
+        </div>`;
     document.getElementById("content").innerHTML = html;
+
+    // draw mini charts
+    drawMiniMoneyChart();
+    drawMiniRankChart();
+}
+
+function portfolioValueLabel() {
+    let val = totalPortfolioValue();
+    if(val<1000) return `${val.toFixed(0)} € portefeuille`;
+    return `${val.toFixed(2)} € portefeuille`;
 }
 
 // ==== INVEST PAGE ====
@@ -177,6 +280,7 @@ function openAction(id) {
     currentPage = "action_"+id;
     currentActionId = id;
     let a = actions[id];
+    let holdingsValue = (portfolio[id]*a.prix).toFixed(2);
     document.getElementById("content").innerHTML = `
         <h1>${a.nom}</h1>
         <canvas id="chart" width="700" height="250"></canvas>
@@ -189,14 +293,32 @@ function openAction(id) {
 
         <div class="card">
             💲 Prix : ${a.prix} €<br>
-            📦 Parts : ${portfolio[id].toFixed(4)}
+            📦 Parts : ${portfolio[id].toFixed(4)} (valeur actuelle : ${holdingsValue} €)
         </div>
 
         <div class="card">
-            <input id="amount" type="number" placeholder="Montant €">
-            <br><br>
+            <strong>Acheter</strong><br>
+            <input id="buyAmount" type="number" placeholder="Montant €">
             <button onclick="buy(${id})">Investir</button>
-            <button onclick="sell(${id})">Récupérer</button>
+            <div class="helper">Entrez un montant en euros à convertir au prix courant.</div>
+        </div>
+
+        <div class="card">
+            <strong>Vendre</strong><br>
+            <div>
+                <label><input type="radio" name="sellMode" value="euro" checked> Vendre en €</label>
+                <label style="margin-left:12px;"><input type="radio" name="sellMode" value="parts"> Vendre en parts</label>
+            </div>
+            <input id="sellAmount" type="number" placeholder="Montant € ou parts selon le mode">
+            <div class="quick-buttons" style="margin-top:8px;">
+                <button onclick="setSellPercent(${id},25)">Vendre 25%</button>
+                <button onclick="setSellPercent(${id},50)">Vendre 50%</button>
+                <button onclick="setSellPercent(${id},100)">Vendre tout</button>
+            </div>
+            <br>
+            <button onclick="sell(${id})">Exécuter vente</button>
+            <button onclick="sellAll(${id})" style="background:#ef4444;color:white;">Vendre tout</button>
+            <div class="helper">Vous pouvez vendre par montant en € (au prix courant) ou par parts. Un clic sur "Vendre tout" vend la totalité de vos parts pour le montant courant.</div>
         </div>
 
         <div class="card">🏅 Rang : ${getRank()}</div>
@@ -206,11 +328,26 @@ function openAction(id) {
     drawChart(id,60);
 }
 
+// ==== setSellPercent helper ====
+function setSellPercent(id, percent) {
+    let a = actions[id];
+    let partsOwned = portfolio[id];
+    let mode = document.querySelector('input[name="sellMode"]:checked').value;
+    if(mode === 'parts') {
+        document.getElementById('sellAmount').value = (partsOwned * (percent/100)).toFixed(6);
+    } else {
+        // euros value of that percent
+        let euros = partsOwned * a.prix * (percent/100);
+        document.getElementById('sellAmount').value = euros.toFixed(2);
+    }
+}
+
 // ==== COURBE ====
 function drawChart(id, points) {
     let a = actions[id];
     let data = a.history.slice(-points);
     let c = document.getElementById("chart");
+    if(!c) return;
     let ctx = c.getContext("2d");
     ctx.clearRect(0,0,c.width,c.height);
 
@@ -219,34 +356,96 @@ function drawChart(id, points) {
 
     ctx.beginPath();
     ctx.strokeStyle = "#22c55e";
+    ctx.lineWidth = 2;
 
     data.forEach((v,i)=>{
         let x = i*(c.width/data.length);
-        let y = c.height - ((v-min)/(max-min||1))*c.height;
+        let y = c.height - ((v-min)/(max-min||1))* (c.height-10) - 5;
         if(i===0) ctx.moveTo(x,y);
         else ctx.lineTo(x,y);
     });
     ctx.stroke();
 }
 
+// mini money chart on dashboard
+function drawMiniMoneyChart() {
+    let c = document.getElementById("moneyMiniChart");
+    if(!c) return;
+    let ctx = c.getContext("2d");
+    let data = argentHistory.slice(-60);
+    ctx.clearRect(0,0,c.width,c.height);
+    let max = Math.max(...data);
+    let min = Math.min(...data);
+    ctx.beginPath();
+    ctx.strokeStyle = "#60a5fa";
+    data.forEach((v,i)=>{
+        let x = i*(c.width/data.length);
+        let y = c.height - ((v-min)/(max-min||1))* (c.height-10) - 5;
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+}
+
+function drawMiniRankChart() {
+    let c = document.getElementById("rankMiniChart");
+    if(!c) return;
+    let ctx = c.getContext("2d");
+    let data = rankHistory.slice(-80);
+    ctx.clearRect(0,0,c.width,c.height);
+    let max = Math.max(...data);
+    let min = Math.min(...data);
+    ctx.beginPath();
+    ctx.strokeStyle = "#fbbf24";
+    data.forEach((v,i)=>{
+        let x = i*(c.width/data.length);
+        let y = c.height - ((v-min)/(max-min||1))* (c.height-10) - 5;
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+}
+
 // ==== BUY / SELL ====
 function buy(id) {
-    let amount = parseFloat(document.getElementById("amount").value);
+    let amount = parseFloat(document.getElementById("buyAmount").value);
     let a = actions[id];
-    if(!amount || amount>argent) return alert("Montant invalide");
+    if(!amount || amount<=0) return alert("Montant invalide");
+    if(amount>argent) return alert("Montant supérieur à l'argent disponible");
     portfolio[id]+=amount/a.prix;
     argent-=amount;
     save();
     openAction(id);
 }
 
+// sell supports two modes: euros or parts
 function sell(id) {
-    let amount = parseFloat(document.getElementById("amount").value);
+    let raw = parseFloat(document.getElementById("sellAmount").value);
     let a = actions[id];
-    let parts = amount/a.prix;
-    if(!amount || parts>portfolio[id]) return alert("Montant invalide");
-    portfolio[id]-=parts;
-    argent+=amount;
+    if(!raw || raw<=0) return alert("Montant invalide");
+    let mode = document.querySelector('input[name="sellMode"]:checked').value;
+    if(mode === 'parts') {
+        if(raw>portfolio[id]) return alert("Vous n'avez pas autant de parts");
+        portfolio[id]-=raw;
+        let euros = raw * a.prix;
+        argent+=euros;
+    } else {
+        // euro mode
+        let parts = raw / a.prix;
+        if(parts>portfolio[id]) return alert("Vous n'avez pas suffisamment de parts pour ce montant");
+        portfolio[id]-=parts;
+        argent+=raw;
+    }
+    save();
+    openAction(id);
+}
+
+// sell all holdings of an action
+function sellAll(id) {
+    let a = actions[id];
+    let parts = portfolio[id];
+    if(parts<=0) return alert("Vous n'avez pas de parts à vendre");
+    let euros = parts * a.prix;
+    portfolio[id]=0;
+    argent+=euros;
     save();
     openAction(id);
 }
@@ -303,6 +502,97 @@ function helpPage() {
     `;
 }
 
+// ==== DETAILED VIEWS FOR CARDS ====
+// openMoney: affiche l'historique détaillé de l'argent
+function openMoney() {
+    currentPage = "money";
+    document.getElementById("content").innerHTML = `
+        <h1>Historique de l'argent</h1>
+        <div class="card">
+            <strong>Argent disponible : ${argent.toFixed(2)} €</strong>
+            <canvas id="moneyChart" width="900" height="250"></canvas>
+            <div class="helper">Historique enregistré à chaque action et tick de marché (dernier ${argentHistory.length} snapshots).</div>
+        </div>
+        <button onclick="dashboard()">⬅ Retour</button>
+    `;
+    // draw after inserting DOM
+    setTimeout(()=> {
+        let c = document.getElementById("moneyChart");
+        if(!c) return;
+        let ctx = c.getContext("2d");
+        let data = argentHistory.slice(-500);
+        ctx.clearRect(0,0,c.width,c.height);
+        let max = Math.max(...data);
+        let min = Math.min(...data);
+        ctx.beginPath();
+        ctx.strokeStyle = "#60a5fa";
+        ctx.lineWidth = 2;
+        data.forEach((v,i)=>{
+            let x = i*(c.width/data.length);
+            let y = c.height - ((v-min)/(max-min||1))* (c.height-10) - 5;
+            if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        });
+        ctx.stroke();
+    },50);
+}
+
+// openRank: affiche classement des joueurs et evolution du rang
+function openRank() {
+    currentPage = "rank";
+    // sort players by total desc
+    let sorted = players.slice().sort((a,b)=>b.total - a.total);
+    let html = `<h1>Classement des joueurs</h1>
+        <div class="card">
+            <strong>Classement</strong><br><ol>`;
+    sorted.forEach(p=>{
+        html+=`<li>${p.name} — ${p.total.toFixed(2)} €</li>`;
+    });
+    html+=`</ol>
+            <canvas id="rankChart" width="900" height="200"></canvas>
+            <div class="helper">Graphique d'évolution du rang (échelle interne). Dans cette version solo, la liste est simulée.</div>
+        </div>
+        <button onclick="dashboard()">⬅ Retour</button>`;
+    document.getElementById("content").innerHTML = html;
+
+    setTimeout(()=> {
+        let c = document.getElementById("rankChart");
+        if(!c) return;
+        let ctx = c.getContext("2d");
+        let data = rankHistory.slice(-500);
+        ctx.clearRect(0,0,c.width,c.height);
+        let max = Math.max(...data);
+        let min = Math.min(...data);
+        ctx.beginPath();
+        ctx.strokeStyle = "#f59e0b";
+        ctx.lineWidth = 2;
+        data.forEach((v,i)=>{
+            let x = i*(c.width/data.length);
+            let y = c.height - ((v-min)/(max-min||1))* (c.height-10) - 5;
+            if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        });
+        ctx.stroke();
+    },50);
+}
+
+// openStatus: affiche paliers de statut
+function openStatus() {
+    currentPage = "status";
+    document.getElementById("content").innerHTML = `
+        <h1>Statuts et seuils</h1>
+        <div class="card">
+            <strong>Statuts disponibles</strong>
+            <ul>
+                <li>Débutant : &lt; 10 000 €</li>
+                <li>Amateur : 10 000 € – 20 000 €</li>
+                <li>Pro : 20 000 € – 50 000 €</li>
+                <li>Expert : &gt; 50 000 €</li>
+            </ul>
+            <div class="helper">Votre statut actuel : <strong>${getRank()}</strong></div>
+        </div>
+        <button onclick="dashboard()">⬅ Retour</button>
+    `;
+}
+
 // ==== MARKET LOOP =====
 setInterval(()=>{
     actions.forEach(a=>{
@@ -320,6 +610,15 @@ setInterval(()=>{
     // Seule la page action ouverte ou invest page est mise à jour
     if(currentPage === "invest") investPage();
     if(currentPage && currentPage.startsWith("action_")) openAction(currentActionId);
+
+    // periodic snapshot even if market didn't change to keep money/rank history flowing
+    argentHistory.push(parseFloat(argent));
+    if(argentHistory.length>2000) argentHistory.shift();
+    rankHistory.push( getRankNumeric(argent + totalPortfolioValue()) );
+    if(rankHistory.length>2000) rankHistory.shift();
+    localStorage.setItem("argentHistory", JSON.stringify(argentHistory));
+    localStorage.setItem("rankHistory", JSON.stringify(rankHistory));
+    localStorage.setItem("players", JSON.stringify(players));
 
 },1000);
 

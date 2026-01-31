@@ -144,10 +144,35 @@ const players = localStorage.getItem("players")
 function loadAction(id, nom, prix) {
     let saved = localStorage.getItem("action_"+id);
     if (saved) return JSON.parse(saved);
-    return { id, nom, prix, prev: prix, timer: rand(), history: [prix] };
+    return { id, nom, prix, prev: prix, timer: nextTimer(id), history: [prix] };
 }
 
-function rand() { return Math.floor(Math.random()*5+1)*60; }
+// timers adaptés par action
+function nextTimer(id) {
+    // suivant ta proposition :
+    // - action 0 (principal) : toutes les 30s
+    // - action 1 (secondaire) : toutes les 60s (1min)
+    // - action 2 (autre) : toutes les 300s (5min)
+    if(id === 0) return 30;
+    if(id === 1) return 60;
+    if(id === 2) return 300;
+    // fallback : aléatoire entre 30s et 2min
+    return Math.floor(Math.random() * 91) + 30; // 30..120
+}
+
+// helper pour détecter si l'utilisateur est en train d'écrire (empêche le re-render)
+function isUserTyping() {
+    try {
+        const ae = document.activeElement;
+        if(!ae) return false;
+        const tag = ae.tagName;
+        if(tag === 'INPUT' || tag === 'TEXTAREA') return true;
+        if(ae.isContentEditable) return true;
+        return false;
+    } catch(e) {
+        return false;
+    }
+}
 
 function save() {
     localStorage.setItem("argent", argent);
@@ -602,14 +627,17 @@ setInterval(()=>{
             a.prix=Math.max(10,Math.floor(a.prix*(1+(Math.random()*0.2-0.1))));
             a.history.push(a.prix);
             if(a.history.length>2000) a.history.shift();
-            a.timer=rand();
+            // nouvelle logique de timer par action
+            a.timer=nextTimer(a.id);
             save();
         }
     });
 
-    // Seule la page action ouverte ou invest page est mise à jour
-    if(currentPage === "invest") investPage();
-    if(currentPage && currentPage.startsWith("action_")) openAction(currentActionId);
+    // Eviter de re-render la page si l'utilisateur est en train de taper dans un input
+    if(!isUserTyping()){
+        if(currentPage === "invest") investPage();
+        if(currentPage && currentPage.startsWith("action_")) openAction(currentActionId);
+    }
 
     // periodic snapshot even if market didn't change to keep money/rank history flowing
     argentHistory.push(parseFloat(argent));

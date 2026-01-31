@@ -42,31 +42,12 @@ body {
 .action {
     display: flex;
     justify-content: space-between;
+    align-items: center;
     cursor: pointer;
 }
 
 .up { color: #22c55e; }
 .down { color: #ef4444; }
-
-input {
-    padding: 8px;
-    width: 120px;
-}
-
-button {
-    padding: 8px 12px;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    background: #22c55e;
-    color: black;
-    margin-right: 10px;
-}
-
-canvas {
-    background: #020617;
-    border-radius: 10px;
-}
 </style>
 </head>
 
@@ -86,15 +67,16 @@ let argent = localStorage.getItem("argent")
     : 10000;
 
 const actions = [
-    { id: 0, nom: "Alpha Corp", prix: 100, timer: randTimer(), historique: [] },
-    { id: 1, nom: "Beta Industries", prix: 250, timer: randTimer(), historique: [] },
-    { id: 2, nom: "Gamma Tech", prix: 500, timer: randTimer(), historique: [] }
+    { id:0, nom:"Alpha Corp", prix:100, prev:100, timer:rand(), cooldown:0 },
+    { id:1, nom:"Beta Industries", prix:250, prev:250, timer:rand(), cooldown:0 },
+    { id:2, nom:"Gamma Tech", prix:500, prev:500, timer:rand(), cooldown:0 }
 ];
 
-function randTimer() {
-    return Math.floor(Math.random() * 5 + 1) * 60;
+function rand() {
+    return Math.floor(Math.random()*5+1)*60;
 }
 
+/* DASHBOARD */
 function dashboard() {
     document.getElementById("content").innerHTML = `
         <h1>Tableau de bord</h1>
@@ -102,18 +84,19 @@ function dashboard() {
     `;
 }
 
+/* PAGE INVESTIR */
 function investPage() {
     let html = `<h1>Investir</h1>`;
     actions.forEach(a => {
-        let variation = Math.floor(Math.random() * 10 - 5);
-        let cls = variation >= 0 ? "up" : "down";
-        let arrow = variation >= 0 ? "▲" : "▼";
-
+        let diff = (((a.prix - a.prev) / a.prev) * 100).toFixed(2);
+        let up = diff >= 0;
         html += `
         <div class="card action" onclick="openAction(${a.id})">
             <div>
                 <strong>${a.nom}</strong><br>
-                <span class="${cls}">${arrow} ${variation}%</span>
+                <span class="${up ? "up":"down"}">
+                    ${up ? "▲":"▼"} ${diff} %
+                </span>
             </div>
             <div>⏱️ ${a.timer}s</div>
         </div>`;
@@ -121,77 +104,35 @@ function investPage() {
     document.getElementById("content").innerHTML = html;
 }
 
+/* PAGE ACTION */
 function openAction(id) {
     let a = actions[id];
-
     document.getElementById("content").innerHTML = `
         <h1>${a.nom}</h1>
-
-        <canvas id="chart" width="600" height="200"></canvas>
-
-        <p>⏱️ Prochaine mise à jour : ${a.timer}s</p>
-
-        <div class="card">
-            <input id="amount" type="number" placeholder="Montant">
-            <br><br>
-            <button onclick="invest(${id})">Investir</button>
-            <button onclick="withdraw(${id})">Récupérer</button>
-        </div>
-
-        <div class="card">
-            📊 Voir la courbe :
-            <button onclick="drawChart(60)">1h</button>
-            <button onclick="drawChart(1440)">1 jour</button>
-            <button onclick="drawChart(10080)">1 semaine</button>
-        </div>
+        <div class="card">💲 Prix actuel : ${a.prix} €</div>
+        <div class="card">⏱️ Prochaine variation : ${a.timer}s</div>
+        <button onclick="investPage()">⬅ Retour</button>
     `;
-
-    drawChart(60);
 }
 
-function drawChart(points) {
-    const c = document.getElementById("chart");
-    const ctx = c.getContext("2d");
-    ctx.clearRect(0,0,c.width,c.height);
+/* MARCHÉ EN TEMPS RÉEL */
+setInterval(() => {
+    actions.forEach(a => {
+        a.timer--;
+        if (a.timer <= 0) {
+            a.prev = a.prix;
+            let variation = Math.random()*0.2 - 0.1;
+            a.prix = Math.max(10, Math.floor(a.prix * (1 + variation)));
+            a.timer = rand();
+        }
+    });
 
-    ctx.beginPath();
-    ctx.strokeStyle = "#22c55e";
-
-    let y = 100;
-    ctx.moveTo(0, y);
-
-    for (let i = 1; i < points; i++) {
-        y += Math.random() * 10 - 5;
-        ctx.lineTo(i * (600 / points), y);
+    if (document.getElementById("content").innerHTML.includes("Investir")) {
+        investPage();
     }
-    ctx.stroke();
-}
+}, 1000);
 
-function invest(id) {
-    let amount = parseInt(document.getElementById("amount").value);
-    if (!amount || amount > argent) {
-        alert("Montant invalide");
-        return;
-    }
-    argent -= amount;
-    localStorage.setItem("argent", argent);
-    alert("Investissement effectué");
-    dashboard();
-}
-
-function withdraw(id) {
-    let amount = parseInt(document.getElementById("amount").value);
-    if (!amount) {
-        alert("Montant invalide");
-        return;
-    }
-    let gain = Math.floor(amount * (1 + Math.random() * 0.2));
-    argent += gain;
-    localStorage.setItem("argent", argent);
-    alert("Récupéré : " + gain + " €");
-    dashboard();
-}
-
+/* START */
 dashboard();
 </script>
 

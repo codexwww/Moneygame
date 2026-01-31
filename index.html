@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Money Game</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: white;
+            text-align: center;
+            padding: 40px;
+        }
+        .card {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 400px;
+            margin: auto;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            background: #22c55e;
+            color: black;
+        }
+        button:hover {
+            background: #16a34a;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>💰 Money Game</h1>
+
+    <div class="card">
+        <h2>Solde</h2>
+        <p id="money">10 000 €</p>
+
+        <button onclick="investir()">Investir 1 000 €</button>
+    </div>
+
+    <script>
+        let argent = 10000;
+
+        function investir() {
+            if (argent >= 1000) {
+                argent -= 1000;
+                alert("Investissement effectué !");
+                document.getElementById("money").innerText = argent + " €";
+            } else {
+                alert("Pas assez d'argent !");
+            }
+        }
+    </script>
+
+</body>
+</html>

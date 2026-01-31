@@ -42,12 +42,26 @@ body {
 .action {
     display: flex;
     justify-content: space-between;
-    align-items: center;
     cursor: pointer;
 }
 
 .up { color: #22c55e; }
 .down { color: #ef4444; }
+
+input {
+    padding: 8px;
+    width: 140px;
+    margin-right: 10px;
+}
+
+button {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    background: #22c55e;
+    color: black;
+}
 </style>
 </head>
 
@@ -63,24 +77,37 @@ body {
 
 <script>
 let argent = localStorage.getItem("argent")
-    ? parseInt(localStorage.getItem("argent"))
+    ? parseFloat(localStorage.getItem("argent"))
     : 10000;
 
+let portfolio = localStorage.getItem("portfolio")
+    ? JSON.parse(localStorage.getItem("portfolio"))
+    : { 0:0, 1:0, 2:0 };
+
 const actions = [
-    { id:0, nom:"Alpha Corp", prix:100, prev:100, timer:rand(), cooldown:0 },
-    { id:1, nom:"Beta Industries", prix:250, prev:250, timer:rand(), cooldown:0 },
-    { id:2, nom:"Gamma Tech", prix:500, prev:500, timer:rand(), cooldown:0 }
+    { id:0, nom:"Alpha Corp", prix:100, prev:100, timer:rand() },
+    { id:1, nom:"Beta Industries", prix:250, prev:250, timer:rand() },
+    { id:2, nom:"Gamma Tech", prix:500, prev:500, timer:rand() }
 ];
 
 function rand() {
     return Math.floor(Math.random()*5+1)*60;
 }
 
+function save() {
+    localStorage.setItem("argent", argent);
+    localStorage.setItem("portfolio", JSON.stringify(portfolio));
+}
+
 /* DASHBOARD */
 function dashboard() {
+    let totalInvesti = 0;
+    actions.forEach(a => totalInvesti += portfolio[a.id] * a.prix);
+
     document.getElementById("content").innerHTML = `
         <h1>Tableau de bord</h1>
-        <div class="card">💰 Argent : ${argent} €</div>
+        <div class="card">💰 Argent disponible : ${argent.toFixed(2)} €</div>
+        <div class="card">💼 Valeur du portefeuille : ${totalInvesti.toFixed(2)} €</div>
     `;
 }
 
@@ -89,13 +116,12 @@ function investPage() {
     let html = `<h1>Investir</h1>`;
     actions.forEach(a => {
         let diff = (((a.prix - a.prev) / a.prev) * 100).toFixed(2);
-        let up = diff >= 0;
         html += `
         <div class="card action" onclick="openAction(${a.id})">
             <div>
                 <strong>${a.nom}</strong><br>
-                <span class="${up ? "up":"down"}">
-                    ${up ? "▲":"▼"} ${diff} %
+                <span class="${diff >= 0 ? "up":"down"}">
+                    ${diff >= 0 ? "▲":"▼"} ${diff} %
                 </span>
             </div>
             <div>⏱️ ${a.timer}s</div>
@@ -107,22 +133,67 @@ function investPage() {
 /* PAGE ACTION */
 function openAction(id) {
     let a = actions[id];
+    let parts = portfolio[id];
+
     document.getElementById("content").innerHTML = `
         <h1>${a.nom}</h1>
-        <div class="card">💲 Prix actuel : ${a.prix} €</div>
+
+        <div class="card">💲 Prix : ${a.prix} €</div>
+        <div class="card">📦 Parts possédées : ${parts.toFixed(4)}</div>
         <div class="card">⏱️ Prochaine variation : ${a.timer}s</div>
+
+        <div class="card">
+            <input id="amount" type="number" placeholder="Montant €">
+            <br><br>
+            <button onclick="buy(${id})">Investir</button>
+            <button onclick="sell(${id})">Récupérer</button>
+        </div>
+
         <button onclick="investPage()">⬅ Retour</button>
     `;
 }
 
-/* MARCHÉ EN TEMPS RÉEL */
+/* ACHAT */
+function buy(id) {
+    let amount = parseFloat(document.getElementById("amount").value);
+    let a = actions[id];
+
+    if (!amount || amount > argent) {
+        alert("Montant invalide");
+        return;
+    }
+
+    let parts = amount / a.prix;
+    portfolio[id] += parts;
+    argent -= amount;
+    save();
+    openAction(id);
+}
+
+/* VENTE */
+function sell(id) {
+    let amount = parseFloat(document.getElementById("amount").value);
+    let a = actions[id];
+    let partsToSell = amount / a.prix;
+
+    if (!amount || partsToSell > portfolio[id]) {
+        alert("Montant invalide");
+        return;
+    }
+
+    portfolio[id] -= partsToSell;
+    argent += amount;
+    save();
+    openAction(id);
+}
+
+/* MARCHÉ VIVANT */
 setInterval(() => {
     actions.forEach(a => {
         a.timer--;
         if (a.timer <= 0) {
             a.prev = a.prix;
-            let variation = Math.random()*0.2 - 0.1;
-            a.prix = Math.max(10, Math.floor(a.prix * (1 + variation)));
+            a.prix = Math.max(10, Math.floor(a.prix * (1 + (Math.random()*0.2 - 0.1))));
             a.timer = rand();
         }
     });

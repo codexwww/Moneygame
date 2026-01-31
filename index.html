@@ -1,159 +1,199 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <title>Money Game</title>
-    <style>
-        body {
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background: #0f172a;
-            color: white;
-            display: flex;
-        }
+<meta charset="UTF-8">
+<title>Money Game</title>
 
-        /* MENU GAUCHE */
-        .sidebar {
-            width: 220px;
-            background: #020617;
-            height: 100vh;
-            padding: 20px;
-        }
+<style>
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #0f172a;
+    color: white;
+    display: flex;
+}
 
-        .sidebar h2 {
-            margin-bottom: 30px;
-        }
+.sidebar {
+    width: 220px;
+    background: #020617;
+    height: 100vh;
+    padding: 20px;
+}
 
-        .menu-item {
-            margin: 15px 0;
-            cursor: pointer;
-            color: #cbd5f5;
-        }
+.menu-item {
+    margin: 15px 0;
+    cursor: pointer;
+    color: #cbd5f5;
+}
+.menu-item:hover { color: #22c55e; }
 
-        .menu-item:hover {
-            color: #22c55e;
-        }
+.content {
+    flex: 1;
+    padding: 30px;
+}
 
-        /* CONTENU */
-        .content {
-            flex: 1;
-            padding: 30px;
-        }
+.card {
+    background: #1e293b;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 15px;
+}
 
-        .card {
-            background: #1e293b;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-        }
+.action {
+    display: flex;
+    justify-content: space-between;
+    cursor: pointer;
+}
 
-        .stats {
-            display: flex;
-            gap: 20px;
-        }
+.up { color: #22c55e; }
+.down { color: #ef4444; }
 
-        button {
-            padding: 10px 15px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            background: #22c55e;
-            color: black;
-        }
-    </style>
+input {
+    padding: 8px;
+    width: 120px;
+}
+
+button {
+    padding: 8px 12px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    background: #22c55e;
+    color: black;
+    margin-right: 10px;
+}
+
+canvas {
+    background: #020617;
+    border-radius: 10px;
+}
+</style>
 </head>
+
 <body>
 
-    <!-- MENU -->
-    <div class="sidebar">
-        <h2>💰 Money Game</h2>
-        <div class="menu-item" onclick="showDashboard()">🏠 Accueil</div>
-        <div class="menu-item" onclick="showInvest()">📈 Investir</div>
-    </div>
+<div class="sidebar">
+    <h2>💰 Money Game</h2>
+    <div class="menu-item" onclick="dashboard()">🏠 Accueil</div>
+    <div class="menu-item" onclick="investPage()">📈 Investir</div>
+</div>
 
-    <!-- CONTENU -->
-    <div class="content" id="content"></div>
+<div class="content" id="content"></div>
 
-    <script>
-        // DONNÉES JOUEUR
-        let argent = localStorage.getItem("argent")
-            ? parseInt(localStorage.getItem("argent"))
-            : 10000;
+<script>
+let argent = localStorage.getItem("argent")
+    ? parseInt(localStorage.getItem("argent"))
+    : 10000;
 
-        let totalGagne = localStorage.getItem("totalGagne")
-            ? parseInt(localStorage.getItem("totalGagne"))
-            : 0;
+const actions = [
+    { id: 0, nom: "Alpha Corp", prix: 100, timer: randTimer(), historique: [] },
+    { id: 1, nom: "Beta Industries", prix: 250, timer: randTimer(), historique: [] },
+    { id: 2, nom: "Gamma Tech", prix: 500, timer: randTimer(), historique: [] }
+];
 
-        function save() {
-            localStorage.setItem("argent", argent);
-            localStorage.setItem("totalGagne", totalGagne);
-        }
+function randTimer() {
+    return Math.floor(Math.random() * 5 + 1) * 60;
+}
 
-        // DASHBOARD
-        function showDashboard() {
-            document.getElementById("content").innerHTML = `
-                <h1>Tableau de bord</h1>
+function dashboard() {
+    document.getElementById("content").innerHTML = `
+        <h1>Tableau de bord</h1>
+        <div class="card">💰 Argent : ${argent} €</div>
+    `;
+}
 
-                <div class="stats">
-                    <div class="card">
-                        <h3>💰 Argent</h3>
-                        <p>${argent} €</p>
-                    </div>
+function investPage() {
+    let html = `<h1>Investir</h1>`;
+    actions.forEach(a => {
+        let variation = Math.floor(Math.random() * 10 - 5);
+        let cls = variation >= 0 ? "up" : "down";
+        let arrow = variation >= 0 ? "▲" : "▼";
 
-                    <div class="card">
-                        <h3>🏆 Rang</h3>
-                        <p>Débutant</p>
-                    </div>
+        html += `
+        <div class="card action" onclick="openAction(${a.id})">
+            <div>
+                <strong>${a.nom}</strong><br>
+                <span class="${cls}">${arrow} ${variation}%</span>
+            </div>
+            <div>⏱️ ${a.timer}s</div>
+        </div>`;
+    });
+    document.getElementById("content").innerHTML = html;
+}
 
-                    <div class="card">
-                        <h3>📊 Total gagné</h3>
-                        <p>${totalGagne} €</p>
-                    </div>
-                </div>
+function openAction(id) {
+    let a = actions[id];
 
-                <div class="card">
-                    <h3>👤 Compte</h3>
-                    <p>Type : Joueur solo</p>
-                    <p>Argent fictif</p>
-                </div>
-            `;
-        }
+    document.getElementById("content").innerHTML = `
+        <h1>${a.nom}</h1>
 
-        // PAGE INVESTIR (simple pour l’instant)
-        function showInvest() {
-            document.getElementById("content").innerHTML = `
-                <h1>Investir</h1>
+        <canvas id="chart" width="600" height="200"></canvas>
 
-                <div class="card">
-                    <h3>Action Alpha</h3>
-                    <p>Prix : 100 €</p>
-                    <button onclick="investir(100)">Investir</button>
-                </div>
+        <p>⏱️ Prochaine mise à jour : ${a.timer}s</p>
 
-                <div class="card">
-                    <h3>Action Beta</h3>
-                    <p>Prix : 250 €</p>
-                    <button onclick="investir(250)">Investir</button>
-                </div>
-            `;
-        }
+        <div class="card">
+            <input id="amount" type="number" placeholder="Montant">
+            <br><br>
+            <button onclick="invest(${id})">Investir</button>
+            <button onclick="withdraw(${id})">Récupérer</button>
+        </div>
 
-        function investir(prix) {
-            if (argent >= prix) {
-                let gain = Math.floor(prix * (Math.random() * 0.2));
-                argent += gain;
-                totalGagne += gain;
-                save();
-                alert("Investissement réussi ! Gain : +" + gain + " €");
-                showInvest();
-            } else {
-                alert("Pas assez d'argent !");
-            }
-        }
+        <div class="card">
+            📊 Voir la courbe :
+            <button onclick="drawChart(60)">1h</button>
+            <button onclick="drawChart(1440)">1 jour</button>
+            <button onclick="drawChart(10080)">1 semaine</button>
+        </div>
+    `;
 
-        // DÉMARRAGE
-        showDashboard();
-    </script>
+    drawChart(60);
+}
+
+function drawChart(points) {
+    const c = document.getElementById("chart");
+    const ctx = c.getContext("2d");
+    ctx.clearRect(0,0,c.width,c.height);
+
+    ctx.beginPath();
+    ctx.strokeStyle = "#22c55e";
+
+    let y = 100;
+    ctx.moveTo(0, y);
+
+    for (let i = 1; i < points; i++) {
+        y += Math.random() * 10 - 5;
+        ctx.lineTo(i * (600 / points), y);
+    }
+    ctx.stroke();
+}
+
+function invest(id) {
+    let amount = parseInt(document.getElementById("amount").value);
+    if (!amount || amount > argent) {
+        alert("Montant invalide");
+        return;
+    }
+    argent -= amount;
+    localStorage.setItem("argent", argent);
+    alert("Investissement effectué");
+    dashboard();
+}
+
+function withdraw(id) {
+    let amount = parseInt(document.getElementById("amount").value);
+    if (!amount) {
+        alert("Montant invalide");
+        return;
+    }
+    let gain = Math.floor(amount * (1 + Math.random() * 0.2));
+    argent += gain;
+    localStorage.setItem("argent", argent);
+    alert("Récupéré : " + gain + " €");
+    dashboard();
+}
+
+dashboard();
+</script>
 
 </body>
 </html>

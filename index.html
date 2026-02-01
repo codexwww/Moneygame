@@ -126,7 +126,7 @@ let portfolio = localStorage.getItem("portfolio")
 // action definitions with names / initial prices; timers set via nextTimer
 const actions = [
     loadAction(0,"Moni Invest (principal)",100),
-    loadAction(1,"Crypto (secondaire)",100),
+    loadAction(1,"Crypto (secondaire)",500),
     loadAction(2,"Water Co (autre)",500)
 ];
 
@@ -144,6 +144,8 @@ let newsHistory = localStorage.getItem("newsHistory")
     ? JSON.parse(localStorage.getItem("newsHistory"))
     : [];
 let activeNewsEffects = {}; // {actionId: {mult:1.2, remainingSecs:20, text:"..."} }
+// Pending news effects generated at time T to be applied at the next price update of the target
+let pendingNewsEffects = {}; // {actionId: {mult:..., duration:..., text:...} }
 
 // BOTs: 5 robots starting at 3000
 let bots = localStorage.getItem("bots")
@@ -152,9 +154,11 @@ let bots = localStorage.getItem("bots")
 
 function createInitialBots(){
     const list = [];
-    for(let i=1;i<=5;i++){
+    // use more natural names so bots are not trivially distinguishable
+    const names = ["Alexandre","Sophie","Thomas","Laura","Nicolas","Amélie","Julien","Camille","Maxime","Marine"];
+    for(let i=0;i<5;i++){
         list.push({
-            id: "Bot"+i,
+            id: names[i % names.length] + (Math.random()<0.3 ? Math.floor(Math.random()*90+10) : ""), // sometimes add number to vary
             cash: 3000,
             portfolio: {0:0,1:0,2:0}
         });
@@ -171,6 +175,8 @@ function updatePlayersList(){
         const total = b.cash + botPortfolioValue(b);
         players.push({name: b.id, total: total});
     });
+    // sort descending by total
+    players.sort((a,b)=> b.total - a.total);
     localStorage.setItem("players", JSON.stringify(players));
     return players;
 }
@@ -661,7 +667,7 @@ function helpPage() {
         <div class="card">
             <h3>Bots (joueurs simulés)</h3>
             <ul>
-                <li>Il y a 5 bots persistants pour simuler d'autres joueurs (nommés Bot1..Bot5).</li>
+                <li>Il y a 5 bots persistants pour simuler d'autres joueurs (noms naturels pour ne pas les distinguer facilement).</li>
                 <li>Chaque bot démarre avec 3 000 €.</li>
                 <li>Comportement : achats/ventes aléatoires et petits, à intervalles simulés. Ils ne descendent jamais en dessous de 3 000 € (recapitalisation automatique si nécessaire).</li>
                 <li>Les totaux des bots sont affichés dans le classement et mis à jour régulièrement.</li>
@@ -672,7 +678,7 @@ function helpPage() {
         <div class="card">
             <h3>News</h3>
             <ul>
-                <li>Une news est générée toutes les 5 minutes (300s) par défaut.</li>
+                <li>Une news est générée toutes les 5 minutes (300s) par défaut. Par design, une news est liée au cycle de Water Co : elle est créée au temps T et s'applique lors du prochain changement de prix de la cible (T+1).</li>
                 <li>Chaque news contient :
                     <ul>
                         <li>un texte (ex. "Pénurie d'eau..."),</li>
@@ -681,7 +687,7 @@ function helpPage() {
                         <li>une durée d'effet (ex. 30s).</li>
                     </ul>
                 </li>
-                <li>Les effets s'appliquent temporairement lors des prochaines mises à jour de prix (augmenteront ou diminueront la variation pour l'action ciblée).</li>
+                <li>Les effets sont appliqués lors du prochain update de prix de l'action ciblée (c'est-à-dire que la news sert d'indice avant l'effet réel).</li>
                 <li>Les news sont visibles sur le Dashboard (section News) et sauvegardées dans le journal local (newsHistory).</li>
             </ul>
             <div class="helper">Utilisez les news comme indices : elles peuvent suggérer d'acheter ou vendre, mais ce n'est pas une garantie.</div>
@@ -689,7 +695,7 @@ function helpPage() {
 
         <div class="card">
             <h3>Casino (Roulette & Blackjack)</h3>
-            <p>Le casino est accessible via la sidebar. Les deux jeux sont gérés localement et affectent directement votre <strong>Argent</strong>. Les résultats s'affichent directement sur la page Casino (nous ne redirigeons plus vers le Dashboard après un pari).</p>
+            <p>Le casino est accessible via la sidebar. Les deux jeux sont gérés localement et affectent directement votre <strong>Argent</strong>. Les résultats s'affichent directement sur la page[...]
 
             <h4>Roulette</h4>
             <ul>
@@ -768,8 +774,8 @@ function helpPage() {
  // ==== FIN HELP PAGE ====
 
  // ==== NEWS GENERATOR =====
-let newsTimer = localStorage.getItem("newsTimer") ? parseInt(localStorage.getItem("newsTimer")) : 300; // 5min
-function generateNews(){
+// (news are now generated when Water Co updates; they are created at time T and applied on the next update of the target)
+function generateNews(asPending = true){
     // sample news items that influence actions
     const pool = [
         {text: "Pénurie d'eau signalée : hausse probable des actions Water Co", target:2, mult:1.20},
@@ -782,8 +788,14 @@ function generateNews(){
     const news = { time: Date.now(), text: pick.text, target: pick.target, mult: pick.mult, duration: 30 }; // effect lasts 30s
     newsHistory.push(news);
     if(newsHistory.length>200) newsHistory.shift();
-    // activate effect
-    activeNewsEffects[pick.target] = {mult: pick.mult, remainingSecs: news.duration, text: pick.text};
+
+    if(asPending){
+        // create a pending effect that will be applied at the next update of the target action
+        pendingNewsEffects[pick.target] = { mult: pick.mult, duration: news.duration, text: pick.text };
+    } else {
+        // immediate activation (kept for flexibility)
+        activeNewsEffects[pick.target] = { mult: pick.mult, remainingSecs: news.duration, text: pick.text };
+    }
     localStorage.setItem("newsHistory", JSON.stringify(newsHistory));
     return news;
 }
@@ -836,13 +848,6 @@ const volMap = {
 };
 
 setInterval(()=>{
-    // news timer countdown
-    newsTimer--;
-    if(newsTimer<=0){
-        generateNews();
-        newsTimer = 300; // reset 5min
-        localStorage.setItem("newsTimer", newsTimer);
-    }
     // decrement active news effects
     Object.keys(activeNewsEffects).forEach(k=>{
         activeNewsEffects[k].remainingSecs--;
@@ -853,22 +858,40 @@ setInterval(()=>{
         a.timer--;
         if(a.timer<=0){
             a.prev = a.prix;
+
+            // If there is a pending news for this action, move it to active and apply on this update
+            let effect = activeNewsEffects[a.id];
+            if(pendingNewsEffects[a.id]){
+                const p = pendingNewsEffects[a.id];
+                // activate now
+                activeNewsEffects[a.id] = {mult: p.mult, remainingSecs: p.duration, text: p.text};
+                effect = activeNewsEffects[a.id];
+                delete pendingNewsEffects[a.id];
+            }
+
             // compute volatility influenced by news effects
             const baseVol = volMap[a.id] || 0.1;
-            // if there's an active effect for this action, apply that multiplier with some randomness
-            const effect = activeNewsEffects[a.id];
             let mult = 1;
             if(effect) mult = effect.mult;
+
             // different strategies per action:
             if(a.id === 0){
-                // Moni Invest: small gaussian-ish change around baseVol
+                // Moni Invest: small gaussian-ish change around baseVol,
+                // constrained to reference 100 ± 50 => [50,150]
                 const changeFactor = 1 + ((Math.random()*2-1) * baseVol) * (Math.random()*0.8 + 0.6);
-                a.prix = Math.max(5, Math.round(a.prix * changeFactor * mult));
+                let newPrice = Math.round(a.prix * changeFactor * mult);
+                // clamp around reference
+                const min0 = 50, max0 = 150;
+                newPrice = Math.max(min0, Math.min(max0, newPrice));
+                a.prix = Math.max(5, newPrice);
             } else if(a.id === 1){
-                // Crypto: larger swings, keep around 100 mean (some pull to 100)
-                let drift = 1 + ((100 - a.prix) / 10000); // slight pull
+                // Crypto: larger swings, reference 500, amplitude 300 => [200,800]
+                let drift = 1 + ((500 - a.prix) / 10000); // slight pull to 500
                 const change = 1 + ((Math.random()*2-1) * baseVol);
-                a.prix = Math.max(2, Math.round(a.prix * change * drift * mult));
+                let newPrice = Math.round(a.prix * change * drift * mult);
+                const min1 = 200, max1 = 800;
+                newPrice = Math.max(min1, Math.min(max1, newPrice));
+                a.prix = Math.max(2, newPrice);
             } else {
                 // Water Co / other: very random, can change a lot
                 const change = 1 + ((Math.random()*2-1) * baseVol);
@@ -878,6 +901,10 @@ setInterval(()=>{
             // keep history and cap
             a.history.push(a.prix);
             if(a.history.length>10000) a.history.shift();
+            // if the action that just hit timer was Water Co (id 2), generate a news now to be applied on next update of its target
+            if(a.id === 2){
+                generateNews(true); // create pending news (applied on next update of its target)
+            }
             // reset timer per action
             a.timer = nextTimer(a.id);
             save();
@@ -988,11 +1015,78 @@ function playRoulette(mode){
 
 // Simple Blackjack implementation
 let bjGame = null;
+
+function createDeck(){
+    const ranks = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+    const suits = ['♠','♥','♦','♣'];
+    const deck = [];
+    for(const r of ranks){
+        for(const s of suits){
+            deck.push(r + s);
+        }
+    }
+    return shuffleArray(deck);
+}
+
+function shuffleArray(arr){
+    for(let i = arr.length -1; i>0; i--){
+        const j = Math.floor(Math.random()*(i+1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
+function drawCard(deck){
+    if(deck.length === 0) return null;
+    return deck.pop();
+}
+
+function handValue(hand){
+    // hand: array of card strings like "A♠", "10♥", "K♣"
+    let total = 0;
+    let aces = 0;
+    hand.forEach(c=>{
+        const rank = c.slice(0, c.length-1);
+        if(rank === 'A'){ total += 11; aces++; }
+        else if(['K','Q','J'].includes(rank)) total += 10;
+        else total += parseInt(rank);
+    });
+    // lower ace values if bust
+    while(total > 21 && aces > 0){
+        total -= 10;
+        aces--;
+    }
+    return total;
+}
+
+function renderBJState(revealDealer=false){
+    const el = document.getElementById("bjState");
+    if(!el) return;
+    const g = bjGame;
+    if(!g) { el.innerText = ""; return; }
+
+    const playerCards = g.player.join(' ');
+    let dealerCards = "";
+    if(revealDealer){
+        dealerCards = g.dealer.join(' ');
+    } else {
+        // hide dealer second card
+        if(g.dealer.length > 0){
+            dealerCards = g.dealer[0] + (g.dealer.length>1 ? " [♥]" : "");
+        }
+    }
+    const playerVal = handValue(g.player);
+    const dealerVal = revealDealer ? handValue(g.dealer) : "?";
+
+    el.innerHTML = `<strong>Vous</strong> : ${playerCards} — <strong>${playerVal}</strong><br><strong>Dealer</strong> : ${dealerCards} — <strong>${dealerVal}</strong>`;
+}
+
 function startBlackjack(){
     let bet = parseFloat(document.getElementById("bjBet").value);
     if(!bet || bet<=0) return alert("Montant invalide");
     if(bet>argent) return alert("Pas assez d'argent");
-    // initialize deck (simplified)
+    // Deduct bet now (mise appliquée immédiatement)
+    argent -= bet;
     bjGame = {
         bet: bet,
         deck: createDeck(),
@@ -1000,102 +1094,112 @@ function startBlackjack(){
         dealer: [],
         finished: false
     };
-    // deal
-    bjGame.player.push(drawCard(bjGame.deck));
+    // initial deal: 2 cards each
     bjGame.player.push(drawCard(bjGame.deck));
     bjGame.dealer.push(drawCard(bjGame.deck));
-    bjGame.dealer.push(drawCard(bjGame.deck));
-    document.getElementById("bjHit").style.display = 'inline-block';
-    document.getElementById("bjStand").style.display = 'inline-block';
-    updateBJState();
-}
-function createDeck(){
-    const vals = [2,3,4,5,6,7,8,9,10,10,10,10,11]; // 10 x4 for JQK, 11 for A
-    let deck = [];
-    for(let i=0;i<4;i++){
-        for(let v of vals) deck.push(v);
-    }
-    // shuffle
-    for(let i=deck.length-1;i>0;i--){
-        const j = Math.floor(Math.random()*(i+1));
-        [deck[i],deck[j]] = [deck[j],deck[i]];
-    }
-    return deck;
-}
-function drawCard(deck){ if(deck.length===0) deck = createDeck(); return deck.pop(); }
-function sumHand(hand){
-    let sum = hand.reduce((s,v)=>s+v,0);
-    // handle aces (11 -> 1 if bust)
-    for(let i=0;i<hand.length;i++){
-        if(sum>21 && hand.includes(11)){
-            sum -= 10; // convert one ace from 11 to 1
-            // remove only one conversion at a time
-            // continue if still >21 and more aces
-            hand[hand.indexOf(11)] = 1;
-        }
-    }
-    return sum;
-}
-function updateBJState(){
-    const state = document.getElementById("bjState");
-    if(!bjGame) return;
-    const pSum = sumHand(bjGame.player.slice());
-    const dSum = sumHand([bjGame.dealer[0]]); // show only one dealer card
-    state.innerHTML = `Vos cartes: ${bjGame.player.join(', ')} (total ${pSum})<br>Dealer: ${bjGame.dealer[0]}, ?`;
-    if(pSum===21){
-        finishBlackjack();
-    }
-    if(pSum>21){
-        finishBlackjack();
-    }
-}
-function hitBlackjack(){
-    if(!bjGame) return;
     bjGame.player.push(drawCard(bjGame.deck));
-    updateBJState();
-    const pSum = sumHand(bjGame.player.slice());
-    if(pSum>21) finishBlackjack();
-}
-function standBlackjack(){
-    if(!bjGame) return;
-    // dealer draws until 17
-    let dSum = sumHand(bjGame.dealer.slice());
-    while(dSum < 17){
-        bjGame.dealer.push(drawCard(bjGame.deck));
-        dSum = sumHand(bjGame.dealer.slice());
-    }
-    finishBlackjack();
-}
-function finishBlackjack(){
-    document.getElementById("bjHit").style.display = 'none';
-    document.getElementById("bjStand").style.display = 'none';
-    if(!bjGame) return;
-    const pSum = sumHand(bjGame.player.slice());
-    const dSum = sumHand(bjGame.dealer.slice());
-    let result = '';
-    if(pSum>21){
-        result = `Vous avez ${pSum} (bust). Vous perdez ${bjGame.bet.toFixed(2)} €`;
-        argent -= bjGame.bet;
-    } else if(dSum>21){
-        result = `Dealer ${dSum} (bust). Vous gagnez ${bjGame.bet.toFixed(2)} €`;
-        argent += bjGame.bet;
-    } else if(pSum > dSum){
-        result = `Vous ${pSum} vs Dealer ${dSum}. Vous gagnez ${bjGame.bet.toFixed(2)} €`;
-        argent += bjGame.bet;
-    } else if(pSum === dSum){
-        result = `Égalité ${pSum}. Mise remboursée.`;
+    bjGame.dealer.push(drawCard(bjGame.deck));
+
+    // show buttons
+    const hitBtn = document.getElementById("bjHit");
+    const standBtn = document.getElementById("bjStand");
+    if(hitBtn) hitBtn.style.display = 'inline-block';
+    if(standBtn) standBtn.style.display = 'inline-block';
+
+    renderBJState(false);
+
+    // immediate checks: blackjack
+    const pVal = handValue(bjGame.player);
+    if(pVal === 21){
+        // player blackjack — consider immediate win
+        setTimeout(()=> {
+            // payoff: for simplicity pay 2x (same as win)
+            argent += bjGame.bet * 2;
+            save();
+            endBJGame('win','Blackjack ! Vous gagnez.');
+        }, 300);
     } else {
-        result = `Vous ${pSum} vs Dealer ${dSum}. Vous perdez ${bjGame.bet.toFixed(2)} €`;
-        argent -= bjGame.bet;
+        save();
     }
-    save();
-    const state = document.getElementById("bjState");
-    if(state) state.innerHTML += `<br><strong>${result}</strong>`;
-    bjGame = null;
-    // ne pas rediriger : rester sur la page casino pour afficher le résultat
 }
 
-// ==== END CASINO ====
+function hitBlackjack(){
+    if(!bjGame || bjGame.finished) return;
+    const card = drawCard(bjGame.deck);
+    if(card) bjGame.player.push(card);
+    renderBJState(false);
+    const pVal = handValue(bjGame.player);
+    if(pVal > 21){
+        // player bust
+        bjGame.finished = true;
+        // bet was already deducted; no refund
+        save();
+        endBJGame('lose','Vous avez dépassé 21. Perdu.');
+    } else if(pVal === 21){
+        // auto-stand
+        standBlackjack();
+    } else {
+        save();
+    }
+}
+
+function standBlackjack(){
+    if(!bjGame || bjGame.finished) return;
+    // reveal dealer and play dealer rules: hit until >=17
+    while(handValue(bjGame.dealer) < 17){
+        const c = drawCard(bjGame.deck);
+        if(c) bjGame.dealer.push(c);
+    }
+    const pVal = handValue(bjGame.player);
+    const dVal = handValue(bjGame.dealer);
+
+    let result = 'push';
+    let message = 'Égalité.';
+    if(dVal > 21){
+        // dealer bust -> player wins
+        result = 'win';
+        message = 'Dealer dépasse 21 — vous gagnez.';
+        argent += bjGame.bet * 2;
+    } else if(pVal > dVal){
+        result = 'win';
+        message = 'Vous gagnez.';
+        argent += bjGame.bet * 2;
+    } else if(pVal < dVal){
+        result = 'lose';
+        message = 'Vous perdez.';
+        // bet was already deducted
+    } else {
+        // push: refund bet
+        result = 'push';
+        message = 'Égalité — mise remboursée.';
+        argent += bjGame.bet;
+    }
+
+    bjGame.finished = true;
+    save();
+    // hide buttons
+    const hitBtn = document.getElementById("bjHit");
+    const standBtn = document.getElementById("bjStand");
+    if(hitBtn) hitBtn.style.display = 'none';
+    if(standBtn) standBtn.style.display = 'none';
+
+    renderBJState(true);
+    endBJGame(result, message);
+}
+
+function endBJGame(result, message){
+    const el = document.getElementById("bjState");
+    if(el){
+        el.innerHTML += `<br><strong>${message}</strong> (solde : ${argent.toFixed(2)} €)`;
+    }
+    // clear bjGame after short delay to allow player to read
+    setTimeout(()=>{
+        bjGame = null;
+        if(document.getElementById("bjHit")) document.getElementById("bjHit").style.display = 'none';
+        if(document.getElementById("bjStand")) document.getElementById("bjStand").style.display = 'none';
+        // keep user on casino page; main loop saves and refreshes
+    }, 1500);
+}
 
 </script>
 </body>

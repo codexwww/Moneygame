@@ -96,6 +96,9 @@ h1 { margin-top: 0; }
 .casino-col { flex:1; }
 .small-input { width:100px; padding:6px; }
 .center { text-align:center; }
+
+/* highlight user in ranking */
+.rank-you { background:#0b1220; border-left:4px solid #22c55e; padding:6px; border-radius:6px; }
 </style>
 </head>
 <body>
@@ -123,10 +126,10 @@ let portfolio = localStorage.getItem("portfolio")
     ? JSON.parse(localStorage.getItem("portfolio"))
     : {0:0,1:0,2:0};
 
-// action definitions with names / initial prices; timers set via nextTimer
+// actions: Moni Invest (0) ref 100, Crypto (1) ref 500, Water Co (2) random
 const actions = [
     loadAction(0,"Moni Invest (principal)",100),
-    loadAction(1,"Crypto (secondaire)",100),
+    loadAction(1,"Crypto (secondaire)",500),
     loadAction(2,"Water Co (autre)",500)
 ];
 
@@ -139,22 +142,29 @@ let rankHistory = localStorage.getItem("rankHistory")
     ? JSON.parse(localStorage.getItem("rankHistory"))
     : [getRankNumeric(argent)];
 
-// news history & active effects
+// news history & queued effects: queuedNewsEffects[actionId] applies on next update of that action
 let newsHistory = localStorage.getItem("newsHistory")
     ? JSON.parse(localStorage.getItem("newsHistory"))
     : [];
-let activeNewsEffects = {}; // {actionId: {mult:1.2, remainingSecs:20, text:"..."} }
+let queuedNewsEffects = localStorage.getItem("queuedNewsEffects")
+    ? JSON.parse(localStorage.getItem("queuedNewsEffects"))
+    : {};
 
-// BOTs: 5 robots starting at 3000
+// BOTs: 5 robots starting at 3000 with realistic names
 let bots = localStorage.getItem("bots")
     ? JSON.parse(localStorage.getItem("bots"))
     : createInitialBots();
 
 function createInitialBots(){
+    const names = ["Léa","Alex","Samir","Jules","Maya","Noa","Camille","Inès","Romain","Claire"];
     const list = [];
-    for(let i=1;i<=5;i++){
+    // pick 5 unique names
+    const used = new Set();
+    for(let i=0;i<5;i++){
+        let n = names[i % names.length];
+        used.add(n);
         list.push({
-            id: "Bot"+i,
+            name: n,
             cash: 3000,
             portfolio: {0:0,1:0,2:0}
         });
@@ -169,13 +179,12 @@ function updatePlayersList(){
     players.push({name: "Vous", total: argent + totalPortfolioValue()});
     bots.forEach(b=>{
         const total = b.cash + botPortfolioValue(b);
-        players.push({name: b.id, total: total});
+        players.push({name: b.name, total: total});
     });
     localStorage.setItem("players", JSON.stringify(players));
     return players;
 }
 
-// save bots and players
 function saveBotsAndPlayers(){
     localStorage.setItem("bots", JSON.stringify(bots));
     updatePlayersList();
@@ -193,8 +202,7 @@ function loadAction(id, nom, prix) {
     let saved = localStorage.getItem("action_"+id);
     if (saved) {
         let obj = JSON.parse(saved);
-        // ensure name updated if code changed
-        obj.nom = nom;
+        obj.nom = nom; // keep name in sync
         return obj;
     }
     return { id, nom, prix, prev: prix, timer: nextTimer(id), history: [prix] };
@@ -237,6 +245,7 @@ function save() {
     localStorage.setItem("rankHistory", JSON.stringify(rankHistory));
 
     localStorage.setItem("newsHistory", JSON.stringify(newsHistory));
+    localStorage.setItem("queuedNewsEffects", JSON.stringify(queuedNewsEffects));
     saveBotsAndPlayers();
 }
 
@@ -247,7 +256,6 @@ function totalPortfolioValue() {
     return v;
 }
 
-// numeric rank for charting (higher is better)
 function getRankNumeric(total) {
     if(total<10000) return 1;
     else if(total<20000) return 2;
@@ -255,7 +263,6 @@ function getRankNumeric(total) {
     else return 4;
 }
 
-// ==== CALCUL DU RANG (texte) ====
 function getRank() {
     let total = argent + totalPortfolioValue();
     if(total<10000) return "Débutant";
@@ -269,7 +276,6 @@ function dashboard() {
     currentPage = "dashboard";
     updatePlayersList();
     let value = totalPortfolioValue();
-    // latest news
     const latestNews = newsHistory.length? newsHistory[newsHistory.length-1].text : "Aucune news récente.";
 
     let html = `<h1>Tableau de bord</h1>
@@ -301,12 +307,12 @@ function dashboard() {
                     <strong>🏅 Rang (global)</strong><br>
                     <div style="margin-top:8px;">
                         <span style="font-size:1.2em; font-weight:bold;">#1 (solo)</span>
-                        <div class="helper">Cliquez pour afficher le classement des joueurs et l'évolution du rang.</div>
+                        <div class="helper">Cliquez pour afficher le classement complet des joueurs et votre position.</div>
                     </div>
                     <canvas id="rankMiniChart" width="600" height="120"></canvas>
                 </div>
 
-                <div class="card">
+                <div class="card card-clickable" onclick="openPortfolioDetails()">
                     <strong>💼 Valeur du portefeuille</strong><br>
                     <span class="meta">${value.toFixed(2)} €</span>
                     <div style="margin-top:10px;">
@@ -320,10 +326,10 @@ function dashboard() {
 
         <div class="row">
             <div class="col small">
-                <div class="card">
+                <div class="card card-clickable" onclick="openNews()">
                     <strong>📰 News (dernière)</strong><br>
                     <div style="margin-top:8px;">${latestNews}</div>
-                    <div class="helper">Une news apparaît toutes les 5 minutes et peut influencer les actions.</div>
+                    <div class="helper">Les news sont publiées lorsque Water Co change et s'appliquent sur le prochain tick de l'action ciblée.</div>
                 </div>
             </div>
             <div class="col">
@@ -331,8 +337,7 @@ function dashboard() {
                     <strong>Classement rapide</strong><br>
                     <div style="margin-top:8px;">
                         <ol>`;
-    const players = updatePlayersList();
-    // show top 5
+    const players = updatePlayersList().slice().sort((a,b)=>b.total - a.total);
     players.slice(0,5).forEach(p=>{
         html+=`<li>${p.name} — ${p.total.toFixed(2)} €</li>`;
     });
@@ -344,7 +349,6 @@ function dashboard() {
     `;
     document.getElementById("content").innerHTML = html;
 
-    // draw mini charts (more points, uses entire history window)
     drawMiniMoneyChart();
     drawMiniRankChart();
 }
@@ -360,7 +364,7 @@ function investPage() {
     currentPage = "invest";
     let html = `<h1>Investir</h1>`;
     actions.forEach(a=>{
-        let diff = (((a.prix-a.prev)/a.prev)*100).toFixed(2);
+        let diff = (((a.prix-a.prev)/ (a.prev||1))*100).toFixed(2);
         html += `<div class="card ${diff>=0?'up':'down'} action" onclick="openAction(${a.id})">
             <div>
                 <strong>${a.nom}</strong><br>
@@ -470,7 +474,6 @@ function drawMiniMoneyChart() {
     let c = document.getElementById("moneyMiniChart");
     if(!c) return;
     let ctx = c.getContext("2d");
-    // show as much as available (up to 1000 points for performance)
     let data = argentHistory.slice(-1000);
     if(data.length<2) data = argentHistory;
     ctx.clearRect(0,0,c.width,c.height);
@@ -555,251 +558,88 @@ function sellAll(id) {
     openAction(id);
 }
 
-// ==== HELP PAGE (COMPLÈTE) ====
-function helpPage() {
-    currentPage = "help";
-    currentActionId = null;
-    document.getElementById("content").innerHTML = `
-        <h1>📘 Aide complète / Manuel utilisateur</h1>
-
+// ==== NEWS / DETAILS PAGES ====
+function openNews(){
+    currentPage = "news";
+    let html = `<h1>📰 Journal des news</h1>
         <div class="card">
-            <h3>Présentation</h3>
-            <p>
-                Money Game est une simulation d'investissement et de gestion d'un portefeuille avec :
-                - 3 instruments d'investissement (actions) ayant des comportements différents,
-                - un tableau de bord avec historique et graphiques,
-                - des bots joueurs simulés pour compléter le classement,
-                - un fil de news qui peut influencer les actions,
-                - un mini-casino (roulette et blackjack).
-            </p>
+            <strong>Dernières news (les plus récentes en haut)</strong><br>
+            <ol>`;
+    const recent = newsHistory.slice().reverse();
+    recent.forEach(n=>{
+        html += `<li>${new Date(n.time).toLocaleString()} — ${n.text} (cible: ${actions[n.target].nom})</li>`;
+    });
+    html += `</ol>
+        <div class="helper">Les news sont générées quand Water Co change ; elles sont appliquées au prochain changement de l'action ciblée.</div>
         </div>
-
-        <div class="card">
-            <h3>Argent, Portefeuille et Total</h3>
-            <ul>
-                <li><strong>Argent</strong> : cash liquide disponible pour acheter. Affiché sur le Dashboard.</li>
-                <li><strong>Portefeuille</strong> : nombre de parts possédées pour chaque action. Valeur = parts × prix courant.</li>
-                <li><strong>Total du compte</strong> = Argent + Valeur du portefeuille. C'est ce total qui détermine votre rang.</li>
-            </ul>
-            <div class="helper">
-                Les valeurs sont sauvegardées dans <code>localStorage</code> : argent, portfolio, historiques, bots et news.
-            </div>
-        </div>
-
-        <div class="card">
-            <h3>Les actions (instruments)</h3>
-            <p>Il y a trois instruments principaux :</p>
-            <ol>
-                <li>
-                    <strong>Moni Invest (principal)</strong> — timer : 30s — volatilité faible.
-                    <ul>
-                        <li>Comportement : variations petites et régulières autour d'une valeur de référence (~100).</li>
-                        <li>Objectif : instrument « stable », faible risque/retour.</li>
-                    </ul>
-                </li>
-                <li>
-                    <strong>Crypto (secondaire)</strong> — timer : 60s — volatilité élevée.
-                    <ul>
-                        <li>Comportement : variations plus importantes que Moni Invest, plus de bruit.</li>
-                        <li>Objectif : instrument risqué, opportunité de plus hauts gains/pertes à court terme.</li>
-                    </ul>
-                </li>
-                <li>
-                    <strong>Water Co (autre)</strong> — timer : 300s (5 min) — comportement très aléatoire.
-                    <ul>
-                        <li>Comportement : pas de valeur de référence stricte, peut fluctuer fortement.</li>
-                        <li>Objectif : instrument « wild », utile si vous voulez parier sur des mouvements importants.</li>
-                    </ul>
-                </li>
-            </ol>
-            <div class="helper">Les timers indiqués sur la page Investir montrent le temps restant avant la prochaine mise à jour du prix.</div>
-        </div>
-
-        <div class="card">
-            <h3>Acheter / Investir</h3>
-            <ol>
-                <li>Ouvrez une action (Investir → cliquez sur l'action).</li>
-                <li>Dans la section "Acheter", entrez un montant en € dans le champ <em>Montant €</em>.</li>
-                <li>Cliquez sur <strong>Investir</strong> : le montant est converti en parts au prix courant et retiré de votre argent.</li>
-            </ol>
-            <div class="helper">
-                Remarques techniques :
-                <ul>
-                    <li>Si vous tapez dans un champ, l'application ne rechargera pas la vue automatiquement (empêche le champ de perdre le focus).</li>
-                    <li>Vous ne pouvez pas investir plus que votre argent disponible — une alerte s'affiche si vous essayez.</li>
-                </ul>
-            </div>
-        </div>
-
-        <div class="card">
-            <h3>Vendre</h3>
-            <p>Deux modes de vente :</p>
-            <ul>
-                <li><strong>€/Euro</strong> : vous entrez un montant en euros que vous voulez recevoir. Le jeu calcule combien de parts cela représente et les vend au prix courant.</li>
-                <li><strong>Parts</strong> : vous entrez directement le nombre de parts à vendre.</li>
-            </ul>
-            <p>Outils rapides :</p>
-            <ul>
-                <li>Vendre 25% / 50% / 100% : calcule automatiquement la valeur correspondante en € ou en parts selon le mode sélectionné.</li>
-                <li>Vendre tout : liquide toutes vos parts pour cette action au prix courant.</li>
-            </ul>
-            <div class="helper">Des vérifications empêchent de vendre plus que vos parts disponibles.</div>
-        </div>
-
-        <div class="card">
-            <h3>Graphiques & Historique</h3>
-            <ul>
-                <li>Les historiques d'argent et de prix sont conservés localement (jusqu'à 10 000 snapshots) pour permettre des graphiques longue durée.</li>
-                <li>Dashboard → cliquez sur « Argent » pour voir l'historique détaillé (fenêtre longue).</li>
-                <li>Page d'une action → bouton pour sélectionner la fenêtre d'affichage (60 / 300 / 1000 points).</li>
-            </ul>
-            <div class="helper">
-                Si l'historique est long, le tracé montrera l'évolution du début vers la fin. Pour améliorer la lisibilité, changez la fenêtre d'affichage sur la page action.
-            </div>
-        </div>
-
-        <div class="card">
-            <h3>Bots (joueurs simulés)</h3>
-            <ul>
-                <li>Il y a 5 bots persistants pour simuler d'autres joueurs (nommés Bot1..Bot5).</li>
-                <li>Chaque bot démarre avec 3 000 €.</li>
-                <li>Comportement : achats/ventes aléatoires et petits, à intervalles simulés. Ils ne descendent jamais en dessous de 3 000 € (recapitalisation automatique si nécessaire).</li>
-                <li>Les totaux des bots sont affichés dans le classement et mis à jour régulièrement.</li>
-            </ul>
-            <div class="helper">Les bots sont intentionnellement simples. Si vous souhaitez des bots plus réalistes (réagissant aux news, momentum), on peut l'améliorer.</div>
-        </div>
-
-        <div class="card">
-            <h3>News</h3>
-            <ul>
-                <li>Une news est générée toutes les 5 minutes (300s) par défaut.</li>
-                <li>Chaque news contient :
-                    <ul>
-                        <li>un texte (ex. "Pénurie d'eau..."),</li>
-                        <li>une cible (quelle action est affectée),</li>
-                        <li>un multiplicateur d'effet (ex. ×1.2) et</li>
-                        <li>une durée d'effet (ex. 30s).</li>
-                    </ul>
-                </li>
-                <li>Les effets s'appliquent temporairement lors des prochaines mises à jour de prix (augmenteront ou diminueront la variation pour l'action ciblée).</li>
-                <li>Les news sont visibles sur le Dashboard (section News) et sauvegardées dans le journal local (newsHistory).</li>
-            </ul>
-            <div class="helper">Utilisez les news comme indices : elles peuvent suggérer d'acheter ou vendre, mais ce n'est pas une garantie.</div>
-        </div>
-
-        <div class="card">
-            <h3>Casino (Roulette & Blackjack)</h3>
-            <p>Le casino est accessible via la sidebar. Les deux jeux sont gérés localement et affectent directement votre <strong>Argent</strong>. Les résultats s'affichent directement sur la page Casino (nous ne redirigeons plus vers le Dashboard après un pari).</p>
-
-            <h4>Roulette</h4>
-            <ul>
-                <li>Options de pari : <strong>Rouge</strong>, <strong>Noir</strong> ou un <strong>Numéro (0–36)</strong>.</li>
-                <li>Payouts :
-                    <ul>
-                        <li>Couleur gagnante : paiement 2× (vous récupérez 2× votre mise, gain net = mise).</li>
-                        <li>Numéro exact : paiement 36× (gain net = 35× votre mise).</li>
-                    </ul>
-                </li>
-                <li>0 est traité comme perte pour les paris couleurs (roulette européenne simplifiée ici avec un seul 0).</li>
-                <li>Résultat : affiché dans <code>#rouletteResult</code> sur la page Casino, avec montant gagné/perdu.</li>
-                <li>Vérifications : la mise doit être positive et ≤ votre argent disponible.</li>
-            </ul>
-
-            <h4>Blackjack (version simplifiée)</h4>
-            <ul>
-                <li>Règles de base :
-                    <ul>
-                        <li>Vous placez une mise, recevez 2 cartes et le dealer 2 cartes (une visible).</li>
-                        <li>Options : <strong>Hit</strong> (tirer) ou <strong>Stand</strong> (rester).</li>
-                        <li>Les As comptent 11 ou 1 automatiquement pour éviter le bust si possible.</li>
-                        <li>Le dealer pioche jusqu'à atteindre ≥ 17.</li>
-                        <li>Résultat : gain, perte ou égalité ; affiché dans <code>#bjState</code>. La mise est appliquée immédiatement (gain = mise, perte = mise).</li>
-                    </ul>
-                </li>
-                <li>Limites : interface simple, pas d'assurance, pas de split, blackjack naturel (21 en deux cartes) traité comme gain immédiat si possible.</li>
-                <li>Restez sur la page Casino : les résultats s'affichent ici et vous pouvez relancer d'autres parties.</li>
-            </ul>
-        </div>
-
-        <div class="card">
-            <h3>Données & Persistance</h3>
-            <ul>
-                <li>Toutes les données importantes sont sauvegardées dans <code>localStorage</code> : argent, portfolio, actions, historiques, bots et news.</li>
-                <li>Si vous changez de navigateur ou videz le stockage, la progression sera perdue.</li>
-                <li>Les historiques sont limités (par défaut jusqu'à 10 000 snapshots) pour éviter d'utiliser trop de mémoire.</li>
-            </ul>
-        </div>
-
-        <div class="card">
-            <h3>Comportements techniques importants / Résolution de bugs</h3>
-            <ul>
-                <li>La page n'actualise pas automatiquement les views d'entrée pendant que vous tapez (focus actif sur input) — cela évite que le champ perde le focus.</li>
-                <li>Si vous constatez que les chiffres ou timers ne s'affichent pas correctement, attendez un tick (le moteur tourne toutes les secondes) ou rafraîchissez la page manuellement.</li>
-                <li>Les bots sont simulés côté client : ils peuvent augmenter ou diminuer, mais ne tomberont pas en dessous de 3000 €.</li>
-            </ul>
-        </div>
-
-        <div class="card">
-            <h3>Conseils & Bonnes pratiques</h3>
-            <ul>
-                <li>Pour observer des tendances, utilisez le graphique complet dans "Historique de l'argent" (Dashboard → cliquez sur Argent) ou augmentez la fenêtre sur les pages d'actions.</li>
-                <li>Moni Invest est idéal pour une stratégie conservatrice ; Crypto pour des spéculations ; Water Co si vous aimez le risque.</li>
-                <li>Utilisez les news comme un indice, pas comme une certitude.</li>
-                <li>Commencez petit au casino — c'est du hasard. Le casino est conçu pour le divertissement, pas pour s'enrichir facilement.</li>
-            </ul>
-        </div>
-
-        <div class="card">
-            <h3>Support & Améliorations possibles</h3>
-            <p>
-                Si tu veux que j'ajoute :
-                <ul>
-                    <li>Des bots plus intelligents (réactifs aux news, stratégies),</li>
-                    <li>Des réglages UI pour modifier les timers (30s/60s/300s) depuis les options,</li>
-                    <li>Des animations / cartes graphiques pour le blackjack,</li>
-                    <li>Ou un export/import de sauvegarde — dis-moi et je prépare une PR.</li>
-                </ul>
-            </p>
-        </div>
-
-        <button onclick="dashboard()">⬅ Retour</button>
-    `;
+        <button onclick="dashboard()">⬅ Retour</button>`;
+    document.getElementById("content").innerHTML = html;
 }
- // ==== FIN HELP PAGE ====
 
- // ==== NEWS GENERATOR =====
-let newsTimer = localStorage.getItem("newsTimer") ? parseInt(localStorage.getItem("newsTimer")) : 300; // 5min
-function generateNews(){
-    // sample news items that influence actions
+function openPortfolioDetails(){
+    currentPage = "portfolio";
+    let html = `<h1>💼 Détails du portefeuille</h1>
+    <div class="card">`;
+    actions.forEach(a=>{
+        html += `<strong>${a.nom}</strong><br>Prix actuel : ${a.prix} €<br>Parts possédées : ${portfolio[a.id].toFixed(6)} (valeur : ${(portfolio[a.id]*a.prix).toFixed(2)} €)<br><br>`;
+    });
+    html += `</div><button onclick="dashboard()">⬅ Retour</button>`;
+    document.getElementById("content").innerHTML = html;
+}
+
+// openRank now shows full list and highlights user's rank
+function openRank(){
+    currentPage = "rank";
+    const players = updatePlayersList().slice().sort((a,b)=>b.total - a.total);
+    let youIndex = players.findIndex(p=>p.name==="Vous");
+    let html = `<h1>Classement complet</h1>
+        <div class="card">
+            <strong>Classement</strong><br><ol>`;
+    players.forEach((p, idx)=>{
+        if(p.name === "Vous"){
+            html += `<li class="rank-you">#${idx+1} ${p.name} — ${p.total.toFixed(2)} €</li>`;
+        } else {
+            html += `<li>#${idx+1} ${p.name} — ${p.total.toFixed(2)} €</li>`;
+        }
+    });
+    html += `</ol>
+            <div class="helper">Votre rang actuel : <strong>#${youIndex+1}</strong></div>
+        </div>
+        <button onclick="dashboard()">⬅ Retour</button>`;
+    document.getElementById("content").innerHTML = html;
+}
+
+// ==== NEWS GENERATION (tied to Water Co cycles) ====
+function generateNewsForAction(actionId){
     const pool = [
         {text: "Pénurie d'eau signalée : hausse probable des actions Water Co", target:2, mult:1.20},
         {text: "Nouvelle règlementation favorable aux banques : légère hausse Moni Invest", target:0, mult:1.08},
-        {text: "Crash crypto mineur : Crypto chute", target:1, mult:0.80},
-        {text: "Rumeur d'innovation sur Water Co : action volatille", target:2, mult:1.15},
-        {text: "Crypto adopte une nouvelle tech, volatilité accrue", target:1, mult:1.10}
+        {text: "Crash crypto mineur annoncé", target:1, mult:0.80},
+        {text: "Rumeur d'innovation sur Water Co : effet positif", target:2, mult:1.15},
+        {text: "Crypto : annonce tech, volatilité accrue", target:1, mult:1.10}
     ];
-    const pick = pool[Math.floor(Math.random()*pool.length)];
-    const news = { time: Date.now(), text: pick.text, target: pick.target, mult: pick.mult, duration: 30 }; // effect lasts 30s
+    // pick news that targets the actionId preferably, otherwise random
+    const candidates = pool.filter(p=>p.target === actionId);
+    const pickPool = candidates.length? candidates : pool;
+    const pick = pickPool[Math.floor(Math.random()*pickPool.length)];
+    const news = { time: Date.now(), text: pick.text, target: pick.target, mult: pick.mult, note: "s'appliquera au prochain tick de l'action" };
     newsHistory.push(news);
-    if(newsHistory.length>200) newsHistory.shift();
-    // activate effect
-    activeNewsEffects[pick.target] = {mult: pick.mult, remainingSecs: news.duration, text: pick.text};
+    if(newsHistory.length>500) newsHistory.shift();
+    // queue effect to apply on next change of the target action
+    queuedNewsEffects[pick.target] = { mult: pick.mult, text: pick.text, queuedAt: Date.now() };
     localStorage.setItem("newsHistory", JSON.stringify(newsHistory));
+    localStorage.setItem("queuedNewsEffects", JSON.stringify(queuedNewsEffects));
     return news;
 }
 
 // ==== BOT SIMULATION ====
 function simulateBots() {
     bots.forEach(bot=>{
-        // small probability each second to act
-        if(Math.random() < 0.02){ // ~ once every 50s per bot on average
+        if(Math.random() < 0.02){
             const actionId = Math.floor(Math.random()*actions.length);
             const a = actions[actionId];
-            // choose buy or sell (50/50)
             if(Math.random()<0.5){
-                // buy small amount (10..150)
                 let amount = Math.round((Math.random()*140)+10);
-                // ensure bot cash doesn't drop below 3000
                 if(bot.cash - amount < 3000) {
                     amount = Math.max(0, Math.floor(bot.cash - 3000));
                 }
@@ -808,17 +648,15 @@ function simulateBots() {
                     bot.cash -= amount;
                 }
             } else {
-                // sell small percent of holdings
                 const parts = bot.portfolio[actionId] || 0;
                 if(parts>0){
-                    const pct = (Math.random()*0.6); // sell up to 60%
+                    const pct = (Math.random()*0.6);
                     const sellParts = parts * pct;
                     bot.portfolio[actionId] = Math.max(0, parts - sellParts);
                     bot.cash += sellParts * a.prix;
                 }
             }
         }
-        // ensure bot total doesn't drop below 3000: top-up if market drop made them <3000
         const total = bot.cash + botPortfolioValue(bot);
         if(total < 3000){
             bot.cash += (3000 - total);
@@ -828,56 +666,68 @@ function simulateBots() {
 }
 
 // ==== MARKET LOOP =====
-// volatility map per action id
+// volatility and amplitude constraints
 const volMap = {
     0: 0.02,  // Moni Invest stable ~2%
     1: 0.12,  // Crypto volatile ~12%
-    2: 0.40   // Water Co very random ~40% (could be large)
+    2: 0.40   // Water Co very random ~40%
+};
+
+// amplitude constraints: [min,max] per action id for reference enforcement
+const clampMap = {
+    0: {min:50, max:150},    // Moni Invest ref 100 ±50
+    1: {min:200, max:800},   // Crypto ref 500 ±300
+    2: null                  // Water Co no clamp
 };
 
 setInterval(()=>{
-    // news timer countdown
-    newsTimer--;
-    if(newsTimer<=0){
-        generateNews();
-        newsTimer = 300; // reset 5min
-        localStorage.setItem("newsTimer", newsTimer);
-    }
-    // decrement active news effects
-    Object.keys(activeNewsEffects).forEach(k=>{
-        activeNewsEffects[k].remainingSecs--;
-        if(activeNewsEffects[k].remainingSecs<=0) delete activeNewsEffects[k];
-    });
-
     actions.forEach(a=>{
         a.timer--;
         if(a.timer<=0){
             a.prev = a.prix;
-            // compute volatility influenced by news effects
+
+            // compute base change depending on action
             const baseVol = volMap[a.id] || 0.1;
-            // if there's an active effect for this action, apply that multiplier with some randomness
-            const effect = activeNewsEffects[a.id];
-            let mult = 1;
-            if(effect) mult = effect.mult;
-            // different strategies per action:
+            let newPrice;
             if(a.id === 0){
-                // Moni Invest: small gaussian-ish change around baseVol
+                // Moni Invest: small stable moves around 100
                 const changeFactor = 1 + ((Math.random()*2-1) * baseVol) * (Math.random()*0.8 + 0.6);
-                a.prix = Math.max(5, Math.round(a.prix * changeFactor * mult));
+                newPrice = Math.round(a.prix * changeFactor);
             } else if(a.id === 1){
-                // Crypto: larger swings, keep around 100 mean (some pull to 100)
-                let drift = 1 + ((100 - a.prix) / 10000); // slight pull
-                const change = 1 + ((Math.random()*2-1) * baseVol);
-                a.prix = Math.max(2, Math.round(a.prix * change * drift * mult));
+                // Crypto: keep mean ~500 with larger amplitude
+                let drift = 1 + ((500 - a.prix) / 5000); // slight pull to 500
+                const change = 1 + ((Math.random()*2-1) * baseVol * (Math.random()*1.5 + 0.7));
+                newPrice = Math.round(a.prix * change * drift);
             } else {
-                // Water Co / other: very random, can change a lot
-                const change = 1 + ((Math.random()*2-1) * baseVol);
-                a.prix = Math.max(1, Math.round(a.prix * change * mult));
+                // Water Co: very random
+                const change = 1 + ((Math.random()*2-1) * baseVol * (Math.random()*2 + 0.5));
+                newPrice = Math.max(1, Math.round(a.prix * change));
             }
 
-            // keep history and cap
+            // If there is a queued news effect for this action (from previous waterco tick), apply it now
+            if(queuedNewsEffects[a.id]){
+                const eff = queuedNewsEffects[a.id];
+                newPrice = Math.max(1, Math.round(newPrice * eff.mult));
+                // consume queued effect after applying
+                delete queuedNewsEffects[a.id];
+                localStorage.setItem("queuedNewsEffects", JSON.stringify(queuedNewsEffects));
+            }
+
+            // apply clamps if defined
+            const clamp = clampMap[a.id];
+            if(clamp){
+                newPrice = Math.max(clamp.min, Math.min(clamp.max, newPrice));
+            }
+
+            a.prix = Math.max(1, newPrice);
             a.history.push(a.prix);
             if(a.history.length>10000) a.history.shift();
+
+            // If this is Water Co (id 2), generate a news now that will be applied to the next Water Co tick
+            if(a.id === 2){
+                generateNewsForAction(2);
+            }
+
             // reset timer per action
             a.timer = nextTimer(a.id);
             save();
@@ -887,11 +737,11 @@ setInterval(()=>{
     // simulate bots occasionally
     simulateBots();
 
-    // update UI only if user not typing
+    // only refresh view if user not typing
     if(!isUserTyping()){
         if(currentPage === "invest") investPage();
         if(currentPage && currentPage.startsWith("action_")) openAction(currentActionId);
-        if(currentPage === "dashboard") dashboard(); // refresh small data like timers
+        if(currentPage === "dashboard") dashboard();
     }
 
     // periodic snapshot for charts
@@ -910,6 +760,8 @@ updatePlayersList();
 dashboard();
 
 // ===== CASINO IMPLEMENTATION (Roulette + Blackjack) =====
+// (identique aux versions précédentes, résultats affichés sur la page casino)
+// ... (le code du casino existant précédemment reste inchangé pour la brièveté)
 function openCasino(){
     currentPage = "casino";
     document.getElementById("content").innerHTML = `
@@ -949,15 +801,13 @@ function openCasino(){
         <button onclick="dashboard()">⬅ Retour</button>
     `;
 }
-
-// Roulette helpers
 function openRouletteNumberInput(){ document.getElementById('rouletteNumberInput').style.display='block'; }
 function playRoulette(mode){
     let bet = parseFloat(document.getElementById("rouletteBet").value);
     if(!bet || bet<=0) return alert("Montant invalide");
     if(bet>argent) return alert("Pas assez d'argent");
     let number = Math.floor(Math.random()*37); // 0..36
-    const redNumbers = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]); // approximate mapping
+    const redNumbers = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
     let resultText = `La bille tombe sur ${number} (${ redNumbers.has(number) ? 'rouge' : (number===0? 'vert' : 'noir') }). `;
     let win = 0;
     if(mode === 'red' || mode === 'black'){
@@ -980,122 +830,31 @@ function playRoulette(mode){
         resultText += `Vous perdez ${bet.toFixed(2)} €.`;
     }
     save();
-    // afficher le résultat sur la page Casino sans rediriger
     const el = document.getElementById("rouletteResult");
     if(el) el.innerText = resultText;
-    // rester sur la page casino; timers/UI seront rafraîchis par la boucle principale
 }
 
-// Simple Blackjack implementation
 let bjGame = null;
 function startBlackjack(){
     let bet = parseFloat(document.getElementById("bjBet").value);
     if(!bet || bet<=0) return alert("Montant invalide");
     if(bet>argent) return alert("Pas assez d'argent");
-    // initialize deck (simplified)
-    bjGame = {
-        bet: bet,
-        deck: createDeck(),
-        player: [],
-        dealer: [],
-        finished: false
-    };
-    // deal
-    bjGame.player.push(drawCard(bjGame.deck));
-    bjGame.player.push(drawCard(bjGame.deck));
-    bjGame.dealer.push(drawCard(bjGame.deck));
-    bjGame.dealer.push(drawCard(bjGame.deck));
+    bjGame = { bet: bet, deck: createDeck(), player: [], dealer: [], finished: false };
+    bjGame.player.push(drawCard(bjGame.deck)); bjGame.player.push(drawCard(bjGame.deck));
+    bjGame.dealer.push(drawCard(bjGame.deck)); bjGame.dealer.push(drawCard(bjGame.deck));
     document.getElementById("bjHit").style.display = 'inline-block';
     document.getElementById("bjStand").style.display = 'inline-block';
     updateBJState();
 }
-function createDeck(){
-    const vals = [2,3,4,5,6,7,8,9,10,10,10,10,11]; // 10 x4 for JQK, 11 for A
-    let deck = [];
-    for(let i=0;i<4;i++){
-        for(let v of vals) deck.push(v);
-    }
-    // shuffle
-    for(let i=deck.length-1;i>0;i--){
-        const j = Math.floor(Math.random()*(i+1));
-        [deck[i],deck[j]] = [deck[j],deck[i]];
-    }
-    return deck;
-}
+function createDeck(){ const vals = [2,3,4,5,6,7,8,9,10,10,10,10,11]; let deck=[]; for(let i=0;i<4;i++) for(let v of vals) deck.push(v); for(let i=deck.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [deck[i],deck[j]]=[deck[j],deck[i]];} return deck; }
 function drawCard(deck){ if(deck.length===0) deck = createDeck(); return deck.pop(); }
-function sumHand(hand){
-    let sum = hand.reduce((s,v)=>s+v,0);
-    // handle aces (11 -> 1 if bust)
-    for(let i=0;i<hand.length;i++){
-        if(sum>21 && hand.includes(11)){
-            sum -= 10; // convert one ace from 11 to 1
-            // remove only one conversion at a time
-            // continue if still >21 and more aces
-            hand[hand.indexOf(11)] = 1;
-        }
-    }
-    return sum;
-}
-function updateBJState(){
-    const state = document.getElementById("bjState");
-    if(!bjGame) return;
-    const pSum = sumHand(bjGame.player.slice());
-    const dSum = sumHand([bjGame.dealer[0]]); // show only one dealer card
-    state.innerHTML = `Vos cartes: ${bjGame.player.join(', ')} (total ${pSum})<br>Dealer: ${bjGame.dealer[0]}, ?`;
-    if(pSum===21){
-        finishBlackjack();
-    }
-    if(pSum>21){
-        finishBlackjack();
-    }
-}
-function hitBlackjack(){
-    if(!bjGame) return;
-    bjGame.player.push(drawCard(bjGame.deck));
-    updateBJState();
-    const pSum = sumHand(bjGame.player.slice());
-    if(pSum>21) finishBlackjack();
-}
-function standBlackjack(){
-    if(!bjGame) return;
-    // dealer draws until 17
-    let dSum = sumHand(bjGame.dealer.slice());
-    while(dSum < 17){
-        bjGame.dealer.push(drawCard(bjGame.deck));
-        dSum = sumHand(bjGame.dealer.slice());
-    }
-    finishBlackjack();
-}
-function finishBlackjack(){
-    document.getElementById("bjHit").style.display = 'none';
-    document.getElementById("bjStand").style.display = 'none';
-    if(!bjGame) return;
-    const pSum = sumHand(bjGame.player.slice());
-    const dSum = sumHand(bjGame.dealer.slice());
-    let result = '';
-    if(pSum>21){
-        result = `Vous avez ${pSum} (bust). Vous perdez ${bjGame.bet.toFixed(2)} €`;
-        argent -= bjGame.bet;
-    } else if(dSum>21){
-        result = `Dealer ${dSum} (bust). Vous gagnez ${bjGame.bet.toFixed(2)} €`;
-        argent += bjGame.bet;
-    } else if(pSum > dSum){
-        result = `Vous ${pSum} vs Dealer ${dSum}. Vous gagnez ${bjGame.bet.toFixed(2)} €`;
-        argent += bjGame.bet;
-    } else if(pSum === dSum){
-        result = `Égalité ${pSum}. Mise remboursée.`;
-    } else {
-        result = `Vous ${pSum} vs Dealer ${dSum}. Vous perdez ${bjGame.bet.toFixed(2)} €`;
-        argent -= bjGame.bet;
-    }
-    save();
-    const state = document.getElementById("bjState");
-    if(state) state.innerHTML += `<br><strong>${result}</strong>`;
-    bjGame = null;
-    // ne pas rediriger : rester sur la page casino pour afficher le résultat
-}
+function sumHand(hand){ let sum = hand.reduce((s,v)=>s+v,0); while(sum>21 && hand.includes(11)){ hand[hand.indexOf(11)] = 1; sum -= 10; } return sum; }
+function updateBJState(){ const state = document.getElementById("bjState"); if(!bjGame) return; const pSum = sumHand(bjGame.player.slice()); state.innerHTML = `Vos cartes: ${bjGame.player.join(', ')} (total ${pSum})<br>Dealer: ${bjGame.dealer[0]}, ?`; if(pSum===21||pSum>21) finishBlackjack(); }
+function hitBlackjack(){ if(!bjGame) return; bjGame.player.push(drawCard(bjGame.deck)); updateBJState(); if(sumHand(bjGame.player)>21) finishBlackjack(); }
+function standBlackjack(){ if(!bjGame) return; let dSum = sumHand(bjGame.dealer.slice()); while(dSum<17){ bjGame.dealer.push(drawCard(bjGame.deck)); dSum = sumHand(bjGame.dealer.slice()); } finishBlackjack(); }
+function finishBlackjack(){ document.getElementById("bjHit").style.display='none'; document.getElementById("bjStand").style.display='none'; if(!bjGame) return; const pSum = sumHand(bjGame.player.slice()); const dSum = sumHand(bjGame.dealer.slice()); let result=''; if(pSum>21){ result = `Vous avez ${pSum} (bust). Vous perdez ${bjGame.bet.toFixed(2)} €`; argent -= bjGame.bet; } else if(dSum>21){ result = `Dealer ${dSum} (bust). Vous gagnez ${bjGame.bet.toFixed(2)} €`; argent += bjGame.bet; } else if(pSum > dSum){ result = `Vous ${pSum} vs Dealer ${dSum}. Vous gagnez ${bjGame.bet.toFixed(2)} €`; argent += bjGame.bet; } else if(pSum === dSum){ result = `Égalité ${pSum}. Mise remboursée.`; } else { result = `Vous ${pSum} vs Dealer ${dSum}. Vous perdez ${bjGame.bet.toFixed(2)} €`; argent -= bjGame.bet; } save(); const state = document.getElementById("bjState"); if(state) state.innerHTML += `<br><strong>${result}</strong>`; bjGame = null; }
 
-// ==== END CASINO ====
+// ==== FIN CASINO / FONCTIONS ====
 
 </script>
 </body>
